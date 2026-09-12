@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "myspec": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@myspec/mcp-server"]
+    }
+  }
+}

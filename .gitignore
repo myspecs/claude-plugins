@@ -1,0 +1,12 @@
+# Logs
+*.log
+
+# Local-only config
+*.local.json
+
+# Spec files downloaded from MySpec by download_spec_file
+.specs/
+
+# Tooling
+node_modules/
+.DS_Store
