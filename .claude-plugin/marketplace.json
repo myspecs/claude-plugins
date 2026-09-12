@@ -9,6 +9,10 @@
     {
       "name": "myspec-mcp",
       "source": "./plugins/myspec-mcp"
+    },
+    {
+      "name": "myspec-factory",
+      "source": "./plugins/myspec-factory"
     }
   ]
 }

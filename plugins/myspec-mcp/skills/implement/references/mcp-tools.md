@@ -79,7 +79,9 @@ Artifacts are multi-file bundles (for example an HTML mockup) versioned as one s
 |---|---|---|
 | `create_stream_token` | `resource_type`, `resource_id`, `event_types`, `ttl_seconds?` (default 24 h, max 7 days), `label?` | A short-lived `wss://` URL that streams a project's events (subprotocol `v1`, one JSON event per frame with a `seq` cursor; reconnect with `?after=<seq>`). The URL is the credential: pass it straight to a WebSocket client (for example Claude Code's Monitor tool), never write, log, or repeat it. Shown once |
 | `list_stream_tokens` | `resource_id?`, `live_only?`, `mine_only?`, `limit?`, `offset?` | Tokens in the organisation with scope, expiry, liveness; secrets never returned |
-| `revoke_stream_token` | `id` | Immediately closes the URL. Revoking someone else's token needs the organisation owner or admin role |
+| `revoke_stream_token` | `id` | Immediately closes the URL (a `stream.error` frame with reason `revoked`, then close code `4001`) and purges buffered events. Revoking someone else's token needs the organisation owner or admin role |
+
+Feed protocol: the first frame is `stream.ready` (restates scope and `last_seq`); event frames are `{"v":1,"seq":N,"type":"spec_file.updated","at":"...","resource":{"type":"project","id":"..."},"data":{...}}`; `stream.expiring` arrives about a minute before expiry; `stream.error` precedes a refusal. Close codes: `4001` bad or revoked token, `4008` slow consumer, `4009` too many sockets for the token, `1013` feed unavailable (retry). Reconnect with `?after=<seq>` (`?after=0` replays the buffer). Event types: `project.updated|deleted`, `spec_file.created|updated|deleted|lock`, `attachment.created|deleted`, `spec_session.created|updated|deleted`, or `*`. Typical use: `Monitor({ ws: { url: <url>, protocols: ["v1"] }, description: "myspec project events" })`.
 
 ## Errors
 
