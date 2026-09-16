@@ -58,11 +58,20 @@ You are a Claude Code worker session in a software factory. Implement exactly on
 - Tests added: <files>
 - Test run: <command> -> <pass/fail summary>
 - Constitution check: pass | <violations>
+- Auto-fix: on | unavailable (<reason>)
 - Notes for the manager: <deviations, follow-ups, or none>
 ```
 
 ## Report to the platform (only if MySpec tools are available to you)
 If your tool list contains mcp__plugin_myspec-mcp_myspec__upload_attachment or mcp__myspec__upload_attachment: after the pull request exists (or the branch is pushed), write the Factory report to a file outside the repository (for example under $TMPDIR, so it is never committed) and upload it with upload_attachment(project_id="<project_id>", file_path="<absolute path>", file_name="factory-<bundle>-task-<N>-report.md", override=true). This tells the manager you are done. Do not call any other MySpec write tool.
+
+## Turn on Auto-fix as soon as the pull request exists
+Enable Claude Code's Auto-fix on your own pull request so CI failures and reviewer comments are picked up even after this session goes idle: open the CI status bar in this session and select **Auto-fix**, or simply act on the PR URL and keep watching it. Auto-fix needs the Claude GitHub App installed on the repository; if it is not available, say so in the Factory report and fall back to the review round below. Auto-fix does not react to merge conflicts from an advancing base branch — rebase when asked.
+
+**Never merge, and never arrange for a merge to happen without a person.** Do not run `gh pr merge` in any form, do not pass `--auto`, do not switch on GitHub's auto-merge toggle, and do not add the pull request to a merge queue. Merging is the factory manager's decision or the repository owner's; your job ends at an approved, green pull request.
+
+## Review round (you own it)
+After the pull request exists, watch it until it is approved. Read `gh api repos/<owner>/<repo>/pulls/<n>/reviews` and `gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate` in full — a review body may be long, so read it from the API rather than a truncated view. Fix every blocking and major item, push, and reply on each thread with the commit that fixed it; where you disagree, reply with the reason instead of changing code. Then re-request review (`gh pr edit <n> --add-reviewer <reviewer>`). Keep every check green. Repeat for each further round. Do not merge and do not force-push.
 
 ## If you cannot finish
 - Spec is ambiguous or contradicts itself: do not guess. Open a draft PR with whatever is safe, add the label "blocked" if you can, and put "BLOCKED: spec - <question>" as the first line of the Factory report.
@@ -71,4 +80,6 @@ If your tool list contains mcp__plugin_myspec-mcp_myspec__upload_attachment or m
 Stop after the pull request exists or the branch is pushed. Do not merge.
 ```
 
-The first line is the session title the manager uses to find this session in `ListAgents`; keep it exactly in that shape. Keep the brief under about 400 lines. Excerpt the solution and requirements; do not paste whole documents. Never include credentials.
+The first line seeds the session title the manager looks for in `ListAgents`; keep it exactly in that shape, and expect the cloud to rewrite it (it keeps part of the line and changes capitalisation), so record the title the session actually got.
+
+The manager cannot receive a reply from a cloud worker. Every brief therefore states where answers go: the pull request body, a review reply, or a `BLOCKED:` line — never "tell the manager". A cloud session also ignores the branch name asked for above and pushes its own `claude/`-prefixed branch; that is expected, which is why the pull-request title carries `task <N>`. Keep the brief under about 400 lines. Excerpt the solution and requirements; do not paste whole documents. Never include credentials.

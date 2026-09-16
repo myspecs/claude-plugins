@@ -56,7 +56,9 @@ gh auth status
 gh repo view --json nameWithOwner,defaultBranchRef,viewerPermission
 ```
 
-Need push permission and the ability to open and merge pull requests. Record the default branch. Check classic branch protection with `gh api repos/{owner}/{repo}/branches/<default>/protection` (a 404 means no classic protection) and rulesets with `gh api repos/{owner}/{repo}/rules/branches/<default>`. Required checks and required approvals found here become part of the merge policy.
+Need push permission and the ability to open and merge pull requests. Record the default branch.
+
+Check that the Claude GitHub App is installed on the repository (`gh api repos/{owner}/{repo}/installation` returns the installation; a 404 means it is not). Auto-fix — the per-pull-request toggle that lets a worker answer CI failures and review comments on its own — needs it, and every factory pull request is meant to run with Auto-fix on. Without the App, say that workers will only react while their session is alive, and that the manager must steer them for each red check. Before recommending Auto-fix, check whether a pull-request comment can trigger privileged automation in this repository (Atlantis, Terraform Cloud, `issue_comment` workflows); Auto-fix replies post under the user's GitHub account and would trigger those. Check classic branch protection with `gh api repos/{owner}/{repo}/branches/<default>/protection` (a 404 means no classic protection) and rulesets with `gh api repos/{owner}/{repo}/rules/branches/<default>`. Required checks and required approvals found here become part of the merge policy.
 
 ## 3. Workers: cloud readiness
 

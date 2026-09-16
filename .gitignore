@@ -3,6 +3,7 @@
 
 # Local-only config
 *.local.json
+.claude/settings.local.json
 
 # Spec files downloaded from MySpec by download_spec_file
 .specs/

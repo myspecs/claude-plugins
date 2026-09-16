@@ -107,11 +107,13 @@ The platform emits `- [ ]` and never parses checkboxes, so these are plugin conv
 ## myspec-factory conventions
 
 - The output style is never `force-for-plugin`; users opt in with `/config` or `"outputStyle": "myspec-factory:Software Factory Manager"` (plugin styles resolve as `<plugin>:<style name>`; the bare name does not resolve).
+- Merging is decided by the manager under the agreed policy or by the user; auto-merge is never enabled (`gh pr merge --auto`, GitHub's auto-merge toggle, merge queues). Per-pull-request Auto-fix is expected and never merges.
 - The manager is the only writer of `tasks.md`; workers report through pull requests (`factory/<bundle>/task-<N>` branches, `task N:` titles, a `## Factory report` in the body).
 - The board is derived from platform checkboxes and open pull requests; `.specs/<bundle>/factory-run.md` is a cache.
 - Stream token URLs from `create_stream_token` go straight into `Monitor` and are never written to any file, log, commit, issue, or reply; the registry keeps only the token id, prefix, expiry, and last `seq`.
 - Every dispatched session is recorded at once in `.specs/<bundle>/factory-sessions.json` (task, session id, URL, branch, status); steering uses the id from that file with `claude -p "<message>" --cloud <session_id>`.
 - Dispatch order: Agent tool `isolation: "remote"`, `claude --cloud`, Agent tool `isolation: "worktree"`, `claude --bg --worktree`. Verify availability; do not assume.
+- Every cloud command runs from a local clone of the target repository (`cd <clone> && claude …`), and `claude --cloud` needs a TTY: dispatch through `script -q <file> claude --cloud "$(cat <brief>)" </dev/null`. The cloud clones the GitHub remote of the current directory at the current branch, rewrites the session title, and pushes its own `claude/`-prefixed branch.
 - The manager session runs with Remote Control connected (`claude --remote-control` or `/remote-control`); steering order is `SendMessage` to the cloud session's listing name, then `claude -p ... --cloud <id>`. Worker briefs start with the line `factory <bundle> task <N>: <title>` because that becomes the session title.
 - Refer to the other plugin's skills by name (`myspec-mcp:implement`), never by relative path; plugins are cached in separate version directories.
 

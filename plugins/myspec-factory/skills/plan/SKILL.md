@@ -11,6 +11,18 @@ Tools are called as `mcp__plugin_myspec-mcp_myspec__<tool>`. Task grammar and th
 
 Locate project and bundle (managed `<!-- myspec:start -->` block in `CLAUDE.md`, else `list_projects` and `list_spec_file`). `get_spec_file` and `read_spec_file` on `tasks.md` (keep the `content_version` for the manager's later write), `requirements.md`, `solution.md`, and the constitution. For OpenSpec bundles, tasks are `## N. Group` / `- [ ] N.M`; treat each `N.M` as a task with no declared dependencies and the group as its module.
 
+## 1b. When the bundle has no tasks.md
+
+A brownfield bundle is often just `proposal.md` and a requirements delta. There is nothing to derive waves from and no checkbox to mark, so put the choice to the user before any dispatch:
+
+| Option | When it fits |
+|---|---|
+| One worker for the whole change | The proposal's Technical Solution is concrete and the requirement ids are testable. The brief carries both documents in full; the pull request title names the bundle instead of a task number |
+| Author `tasks.md` first (`myspec-mcp:spec-authoring`), then plan waves | The change spans modules that can progress independently, or the user wants milestone gates |
+| Split by module without a `tasks.md` | Only when the modules truly do not share files; say that the shared-fixture or contract work between them will not be checked until integration |
+
+Record the choice in `.specs/<bundle>/factory-run.md`. With no `tasks.md`, "done" is the merged pull request plus the verification in `integrate`; say so rather than implying a checkbox was ticked.
+
 ## 2. Derive the board
 
 | Status | Source of truth |

@@ -24,6 +24,7 @@ Every worker session the manager starts is recorded in a local registry so the m
       "started_at": "2026-09-12T13:05:00Z",
       "status": "running",
       "pr": null,
+      "autofix": "unknown",
       "notes": ""
     }
   ]
@@ -34,6 +35,7 @@ Every worker session the manager starts is recorded in a local registry so the m
 - `agent_name`: the name the session shows in `ListAgents` while the manager is connected to Remote Control (the brief's first line); `SendMessage` uses it. `null` until seen.
 - `session_id`: the cloud session id (`session_...` or `cse_...`), the background agent id, or the `claude --bg` id. Store the bare id; the `View:` line's query string (`?from=cli&m=0`) is dropped when saving the URL.
 - `status`: `running`, `pushed` (branch seen, no pull request yet), `pr-open`, `blocked`, `merged`, `failed`, `redispatched`.
+- `autofix`: `on` once the worker (or the manager) enabled Auto-fix for the pull request, `unavailable` with the reason in `notes`, `unknown` before a pull request exists.
 - Append a new entry on redispatch rather than overwriting; set the old entry's status to `redispatched`.
 
 ## Stream token (never the URL)
@@ -64,7 +66,17 @@ Filled from `list_spec_file` at watch start, refreshed on every `spec_file.creat
 
 ## Capturing the id
 
-`claude --cloud` and `claude -p "..." --cloud <id>` print lines shaped like:
+A new `claude --cloud` session prints its title and URL but not a `Session ID:` line:
+
+```
+Created cloud session: <rewritten title>
+View: https://claude.ai/code/session_01KtmAVhNWdS6WFWFhguY46R?from=cli&m=0
+Resume with: claude --teleport session_01KtmAVhNWdS6WFWFhguY46R
+```
+
+Take the id from the `View:` or `Resume with:` line, and `agent_name` from the `Created cloud session:` line (confirm it with `ListAgents`). The output is a terminal capture, so strip escapes first: `sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' <file> | tr '\r' '\n'`.
+
+`claude -p "..." --cloud <id>` prints lines shaped like:
 
 ```
 Sent to cloud session.

@@ -99,6 +99,11 @@ Branch `factory/<bundle>/task-<N>`, one task, one pull request, tests named afte
 
 ## Troubleshooting
 
+- Auto-fix is not offered on a worker's pull request: the Claude GitHub App is not installed on the repository (`gh api repos/{owner}/{repo}/installation` 404s). Install it from [github.com/apps/claude](https://github.com/apps/claude), or accept that workers only react while their session is alive.
+- `claude --cloud` exits with `--cloud requires an interactive terminal`: it needs a TTY, so the manager dispatches through `script -q <file> claude --cloud "$(cat <brief>)" </dev/null` from a local clone of the target repository.
+- A cloud session started on the wrong repository: `--cloud` reads the git remote of the current directory, so every dispatch command must `cd` into a clone of the target repository first; the Bash tool does not keep a working directory between calls.
+- The worker's branch is not `factory/<bundle>/task-<N>`: cloud sessions always push their own `claude/`-prefixed branch. Match on the branch prefix and the `task N:` pull-request title.
+- The session name in `ListAgents` does not match the brief's first line: the cloud rewrites the title. Record the name from `Created cloud session:` and confirm it with `ListAgents`.
 - Workers cannot reach MySpec in the cloud: the cloud environment lacks `MYSPEC_API_TOKEN` or egress to the MySpec hosts; briefs already inline the spec excerpts, so this only matters when the brief asks workers to read more.
 - Cloud workers missing from `ListAgents`: the manager session is not connected to Remote Control (`/remote-control`), or the sessions are older than the bounded listing; steer with `claude -p ... --cloud <id>` instead.
 - Cloud dispatch refused: plan or organisation policy; the manager falls back to worktrees.
