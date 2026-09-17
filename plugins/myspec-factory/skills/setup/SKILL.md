@@ -58,7 +58,7 @@ gh repo view --json nameWithOwner,defaultBranchRef,viewerPermission
 
 Need push permission and the ability to open and merge pull requests. Record the default branch.
 
-Check that the Claude GitHub App is installed on the repository (`gh api repos/{owner}/{repo}/installation` returns the installation; a 404 means it is not). Auto-fix — the per-pull-request toggle that lets a worker answer CI failures and review comments on its own — needs it, and every factory pull request is meant to run with Auto-fix on. Without the App, say that workers will only react while their session is alive, and that the manager must steer them for each red check. Before recommending Auto-fix, check whether a pull-request comment can trigger privileged automation in this repository (Atlantis, Terraform Cloud, `issue_comment` workflows); Auto-fix replies post under the user's GitHub account and would trigger those. Check classic branch protection with `gh api repos/{owner}/{repo}/branches/<default>/protection` (a 404 means no classic protection) and rulesets with `gh api repos/{owner}/{repo}/rules/branches/<default>`. Required checks and required approvals found here become part of the merge policy.
+Check that the Claude GitHub App is installed at the organization level with `gh api orgs/{org}/installations --jq '.installations[].app_slug'`, which lists all installed GitHub Apps for the organization (replace `{org}` with the organization name from the repository). If "claude" appears in the output, the Claude GitHub App is installed. Auto-fix — the per-pull-request toggle that lets a worker answer CI failures and review comments on its own — needs it, and every factory pull request is meant to run with Auto-fix on. Without the App, say that workers will only react while their session is alive, and that the manager must steer them for each red check. Before recommending Auto-fix, check whether a pull-request comment can trigger privileged automation in this repository (Atlantis, Terraform Cloud, `issue_comment` workflows); Auto-fix replies post under the user's GitHub account and would trigger those. Check classic branch protection with `gh api repos/{owner}/{repo}/branches/<default>/protection` (a 404 means no classic protection) and rulesets with `gh api repos/{owner}/{repo}/rules/branches/<default>`. Required checks and required approvals found here become part of the merge policy.
 
 ## 3. Workers: cloud readiness
 
@@ -68,6 +68,14 @@ Cloud sessions run on Anthropic's infrastructure with a clone of the repository.
    The cloud clones the GitHub remote at the current branch, not the local checkout: before dispatching, the base branch must be pushed and the manager's checkout must sit on it.
 2. A cloud environment exists with network egress to `registry.npmjs.org`, `auth.myspec.dev`, `app.myspec.dev`, and the platform host (or the dev equivalents), and carries `MYSPEC_API_TOKEN` (there is no browser in the cloud, so `login` cannot run there). Prefer the environment's API credentials feature over a plain environment variable where the plan offers it. The user configures this at claude.ai/code; you cannot.
 3. Workers do not strictly need MySpec access: the manager inlines the spec excerpts into every brief, and workers report through pull requests. MySpec access in workers is only needed when the brief tells them to read more of the bundle.
+
+## 3b. Workers: local readiness and credentials
+
+A local worker (worktree or background session) runs on this machine with the user's environment, so its MySpec access is the manager's responsibility:
+
+1. Check what a local worker inherits: `claude mcp list` in the repository. A `myspec` row means it already has a server; verify that server reaches the target project with `list_projects` before the run. When there is no row, the worker gets a temporary `--mcp-config` file whose `env` references `${MYSPEC_API_TOKEN}` from the gitignored `.claude/settings.local.json` (recipe in the dispatch skill's `cloud-vs-local.md`). A PAT is scoped to one deployment and one organisation — the wrong one fails with `API token exchange failed … invalid, disabled, or expired` — so report the organisation you verified against, and never print the token.
+2. Two MySpec servers must not share `~/.myspec/oauth_creds.json` at the same time: a refresh in one rotates the refresh token and the other fails with `Refresh token rejected`, then `Not authenticated`, which takes the manager's own tools down mid-run. This is the reason workers get their own PAT.
+
 
 ## 4. Workers: repository configuration (opt-in writes)
 

@@ -9,7 +9,13 @@ Inputs: an approved wave from the `plan` skill, the concurrency cap, and the use
 
 ## 1. Build one brief per task
 
-A worker starts with zero context. Each brief must contain, inline: repository and default branch; the task block verbatim; every acceptance criterion; the text of each cited FR/NFR (or AR/CR, or OpenSpec requirement and scenarios); the constitution sections that bind the work (Technology, Architecture, Testing, Coding Standards, Security); the solution module excerpts the task touches; the output contract (branch, pull request title and body, `## Factory report`, blocked protocol); and the rule that the worker must not edit `tasks.md` or any spec file. Fill `references/worker-brief.md`; keep the brief under roughly 400 lines by excerpting rather than pasting whole documents.
+A worker starts with zero context. Each brief must contain, inline: repository and default branch; the task block verbatim; every acceptance criterion; the text of each cited FR/NFR (or AR/CR, or OpenSpec requirement and scenarios); the constitution sections that bind the work (Technology, Architecture, Testing, Coding Standards, Security); the solution module excerpts the task touches; the output contract (branch, pull request title and body, `## Factory report`, blocked protocol); and the rule that the worker must not edit `tasks.md` or any spec file. Fill `references/worker-brief.md`; keep the brief under roughly 400 lines by excerpting rather than pasting whole documents (a branch worker owning a long task chain may need more; cut proposal prose before acceptance criteria).
+
+Brief checks that have cost a review round when skipped:
+- Include every requirement id the acceptance criteria or implementation notes reference, not only the `_Requirements:_` line — a missing priority or ordering rule sends the worker to guess.
+- List the test, lint and typecheck commands of every project the task may touch, taken from that project's pull-request workflow.
+- State the production rule: nothing fake, stubbed, or half-wired may become reachable in a production build. A consumer built ahead of its provider stays hidden or inert until the integration task wires it.
+- Paste the contract notes other workers already produced (response shapes, event fields, service names, encodings) into later briefs.
 
 ## 2. Preflight, once per wave
 
@@ -26,7 +32,7 @@ Before the first cloud dispatch, in the **local clone of the target repository**
 | 1 | Agent tool with `isolation: "remote"` | Available in this build and the user allowed cloud dispatch. Runs in the background; its completion arrives as a notification |
 | 2 | `claude --cloud` under a pseudo-terminal | Remote subagent unavailable, or the user asked for the CLI. `--cloud` **requires a TTY** and exits 1 in a plain background Bash call, so dispatch with `cd <clone> && script -q <typescript> claude --cloud "$(cat <brief>)" </dev/null` (see `references/cloud-vs-local.md`). Steer a running session with `claude -p "<message>" --cloud <session_id>` |
 | 3 | Agent tool with `isolation: "worktree"` | Cloud not allowed or unavailable. Background subagent in its own worktree; results return as a notification |
-| 4 | `claude --bg --worktree task-<N> -p "<brief>"` via Bash | When a separate process is preferred; monitor with `claude agents` |
+| 4 | `cd <clone> && claude --bg "<brief>" --worktree task-<N> --permission-mode auto` via Bash | When a separate process is preferred. The prompt is positional (`--bg` and `-p` conflict) and `--permission-mode auto` keeps the worker unattended; monitor with `claude agents --json` |
 
 Every command that starts or steers a cloud session begins with `cd <clone> &&`; the Bash tool's working directory does not carry over between calls.
 
@@ -46,11 +52,15 @@ Post the updated board to the user with the session URLs.
 
 ## 5. Hand over to integrate
 
-When every session in the wave has reported (notification, `claude agents`, or a pull request appearing), run the `integrate` skill. Do not start the next wave first. A pushed branch is not a finished worker: cloud sessions keep committing after the first push, so wait for the pull request, or for commits to have stopped, before treating the lane as done.
+Run the `integrate` skill for each pull request as it becomes ready (notification, `claude agents`, or a pull request turning approved and green); do not wait for the whole wave, and merge any ready pull request that depends on no unmerged pull request straight away. Do not start the next wave until every session in this one has merged or reported blocked. A pushed branch is not a finished worker: cloud sessions keep committing after the first push, so wait for the pull request, or for commits to have stopped, before treating the lane as done.
 
 ## Channels to a running worker
 
 `references/worker-channels.md` lists every way the manager can talk to, watch, or take over a worker session, with what each one proves. Read it before improvising a check.
+
+## Relaying between workers
+
+Read each `## Factory report` and each first push as it lands. When one worker's output fixes something another in-flight worker must match — an internal event payload, a service or subject name, a response wrapper, the unit of an offset, an error `reason` — send that worker the exact facts with `SendMessage` straight away, and record them under `contract_notes` in the registry for later briefs. Couplings found only at integration cost both branches a rework.
 
 ## Steering instead of redispatching
 

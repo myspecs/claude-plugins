@@ -21,7 +21,7 @@ Turns Claude Code into a **Software Factory Manager**: an orchestrator that runs
 - GitHub CLI (`gh`) authenticated with push and pull-request rights on the repository.
 - For the live event feed: `@myspec/mcp-server` 0.4.0 or newer (today `@next`) and a platform with stream tokens enabled; otherwise the manager polls.
 - For cloud workers: Claude Code on the web enabled for the account, the GitHub App on the repository, and a cloud environment carrying `MYSPEC_API_TOKEN` when workers need MySpec access.
-- For local workers: git worktrees and the `claude` CLI.
+- For local workers: git worktrees and the `claude` CLI, plus a long-lived `MYSPEC_API_TOKEN` in the repository's gitignored `.claude/settings.local.json` when they need MySpec tools — a PAT keeps them off the manager's OAuth credentials, which two servers cannot share.
 
 ## Installation
 
@@ -94,12 +94,17 @@ Branch `factory/<bundle>/task-<N>`, one task, one pull request, tests named afte
 | Concurrency cap, merge policy, cloud permission | Asked once per run by the manager | Bound every wave of the run |
 | `extraKnownMarketplaces` / `enabledPlugins` | Repository `.claude/settings.json` (written by `setup` on approval) | Lets cloud workers load `myspec-mcp` |
 | `MYSPEC_API_TOKEN` | Cloud environment at claude.ai/code | MySpec access for cloud workers and shifts (no browser login there) |
+| `MYSPEC_API_TOKEN` (+ `MYSPEC_USER_AUTH_URL` when the deployments differ) | `env` in the managed repository's gitignored `.claude/settings.local.json` | MySpec access for local workers. Check `claude mcp list` first: a `myspec` row means the worker already has a server; otherwise pass a temporary `--mcp-config` file that reads `${MYSPEC_API_TOKEN}` from the environment. Scoped to one deployment and organisation, so verify with `list_projects` before a run |
 | `.specs/<bundle>/factory-sessions.json` | Local, gitignored | Session registry: task, session id, URL, branch, status for every dispatched worker, plus the stream token id, prefix, expiry, and last `seq` (never the stream URL); the manager reads it to steer a session with `claude -p "..." --cloud <session_id>` |
 | `.specs/<bundle>/factory-run.md` | Local, gitignored | Run log and board cache; never the source of truth |
 
 ## Troubleshooting
 
-- Auto-fix is not offered on a worker's pull request: the Claude GitHub App is not installed on the repository (`gh api repos/{owner}/{repo}/installation` 404s). Install it from [github.com/apps/claude](https://github.com/apps/claude), or accept that workers only react while their session is alive.
+- A worker's MySpec calls fail with `Refresh token rejected` then `Not authenticated`, and the manager's MySpec tools stop working too: two servers shared `~/.myspec/oauth_creds.json` and one rotated the refresh token. Give local workers their own `MYSPEC_API_TOKEN` (gitignored `.claude/settings.local.json`), then reconnect the manager's server with `/mcp`.
+- A worker's PAT 401s with `API token exchange failed … invalid, disabled, or expired`: the token belongs to a different deployment or organisation than `~/.myspec/settings.json` names. Set `MYSPEC_USER_AUTH_URL` for that worker to the PAT's auth host, or mint a PAT in the right organisation; verify with `list_projects` before the run.
+- `claude --bg -p "…"` is refused (`--bg and --print conflict`): pass the brief as the positional argument, `claude --bg "<brief>"`. `claude agents` also needs `--json` when stdout is not a terminal.
+- Auto-fix is not offered on a worker's pull request: the Claude GitHub App is not installed on the repository (check the repository's Settings > GitHub Apps; `gh api repos/{owner}/{repo}/installation` needs an App JWT and returns 401 to a normal `gh` login). A cloud worker also cannot click the Auto-fix toggle in its own session; it subscribes to its pull request's activity instead. Install the App from [github.com/apps/claude](https://github.com/apps/claude), or accept that workers only react while their session is alive.
+- Dev ends up running an older commit after two merges: push workflows that build a mutable tag such as `:latest` race when merges land seconds apart. The manager merges one pull request at a time and waits for its post-merge runs; to recover, re-run the newest merge commit's workflow.
 - `claude --cloud` exits with `--cloud requires an interactive terminal`: it needs a TTY, so the manager dispatches through `script -q <file> claude --cloud "$(cat <brief>)" </dev/null` from a local clone of the target repository.
 - A cloud session started on the wrong repository: `--cloud` reads the git remote of the current directory, so every dispatch command must `cd` into a clone of the target repository first; the Bash tool does not keep a working directory between calls.
 - The worker's branch is not `factory/<bundle>/task-<N>`: cloud sessions always push their own `claude/`-prefixed branch. Match on the branch prefix and the `task N:` pull-request title.

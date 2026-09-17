@@ -90,6 +90,10 @@ Session status: with Remote Control connected, `ListAgents` shows each cloud wor
 
 Pull-request monitor lines: a line with `OPEN` and green checks for a task not yet integrated triggers `integrate`; a line with `MERGED` that the manager did not merge itself means a human merged it; verify and mark `[x]`.
 
+## Keeping the feed alive
+
+A `Monitor` window lasts at most 60 minutes (max `timeout_ms=3600000`) and a token last 24 hours (default); neither renews itself. Re-arm on every expiry notice, and before asking the user a question that may wait a long time, check the token's `expires_at` and rotate first — a token that lapses while you wait leaves an unrecoverable gap. When a gap happens anyway, rotate and resync (`get_spec_file` on every bundle file) before relying on the board. Update `last_seq` from every event frame, and resume with `?after=<last_seq>` after any reconnect.
+
 ## 4. Close
 
 At the end of the run or at a milestone gate: `revoke_stream_token(token_id)`, stop both monitors (TaskStop), and set `stream.revoked_at` in the registry.

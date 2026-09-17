@@ -30,6 +30,7 @@ Control frames are namespaced `stream.*` and never collide with event types: `st
 | `4008` | Slow consumer; the server dropped the socket because frames were not being read | Reconnect with `?after=<last_seq>` |
 | `4009` | Too many concurrent sockets for this token | Wait for a slot; keep the token |
 | `1013` | Feed not available right now (stream tokens not started, journal unreachable) | Back off and retry the same URL |
+| `1006` | Abnormal close with no reason; idle sockets have been observed to drop every 15-25 minutes | Reconnect at once with `?after=<last_seq>`; frames from the gap replay. Frequent drops are a platform issue worth reporting, not a token problem |
 
 ## Event types (resource `project`)
 
@@ -87,4 +88,4 @@ Archived project: stop dispatching, report. Deleted project: the feed ends; stop
 
 ### Rotation
 
-Rotate from the registry's `expires_at` about five minutes before expiry; `stream.expiring` (one minute before) is the backstop, which can arrive while the manager is busy integrating. Mint a replacement with the same scope and a fresh TTL, open a new Monitor on the new URL without `?after=` (event buffers and sequence numbers are per token, so the old cursor does not apply), wait for its `stream.ready`, then stop the old Monitor. Drop any frame the old feed already delivered (same `type`, `at`, and resource id). Update `stream` in the registry (new `token_id`, `token_prefix`, `expires_at`; reset `last_seq`). If the old token expired before the new feed was ready, or the socket closed `4001`, resync: `get_spec_file` on every bundle file and `list_attachments` for reports. Never mention either URL.
+Rotate from the registry's `expires_at` about five minutes before expiry; `stream.expiring` (one minute before) is the backstop, which can arrive while the manager is busy integrating. Mint a replacement with the same scope and a fresh TTL, open a new Monitor on the new URL without `?after=` (each token has its own buffer, so the old cursor does not replay on the new one), wait for its `stream.ready`, then stop the old Monitor at once. Sequence numbers are allocated across all live tokens on the project, so while two tokens overlap the same event arrives on both with different `seq`, and a single feed shows gaps for numbers taken by the other token until it expires: drop any frame already handled (same `type`, `at`, and resource id) and do not treat those gaps as lost events. Update `stream` in the registry (new `token_id`, `token_prefix`, `expires_at`; reset `last_seq`). If the old token expired before the new feed was ready, or the socket closed `4001`, resync: `get_spec_file` on every bundle file and `list_attachments` for reports. Never mention either URL.

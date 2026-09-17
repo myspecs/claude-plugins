@@ -46,12 +46,50 @@ Facts that shape dispatch:
 ## Local worktree via a background CLI session
 
 ```bash
-claude --bg --worktree task-<N> -p "<brief text>"
-claude agents            # list background sessions and their state
+cd <clone> && claude --bg "<brief text>" --worktree task-<N> --permission-mode auto   # prompt is POSITIONAL
+cd <clone> && claude --bg "$(cat <brief>)" --mcp-config /tmp/factory-<bundle>/.mcp.json --permission-mode auto
+claude agents --json     # list background sessions (plain `claude agents` needs a TTY)
 claude attach <id>       # open one interactively
+claude logs <id>         # recent output
 ```
 
-`--worktree` creates `.claude/worktrees/task-<N>/` on a new branch; `--bg` returns immediately and prints the id that `attach`, `logs`, `stop`, and `rm` take. The documentation describes isolation checks that keep a worktree session from editing the main checkout; still review the diff scope at integration. After the task merges, clean up with `claude rm <id>` and `git worktree remove .claude/worktrees/task-<N>`.
+Start every local worker with `--permission-mode auto` so it runs unattended: without it the session stops at the first permission prompt with nobody to answer, and the manager sees a worker that is idle rather than blocked. `auto` lets Claude judge each call and still denies the dangerous ones, unlike `bypassPermissions`, which the factory never uses; the brief's own prohibitions (no merging, no spec edits, no force-push) are what bound the worker.
+
+`--bg` and `-p/--print` conflict — `--print` never starts the attachable session, and the CLI refuses the combination: pass the brief as the positional argument. `claude agents` without `--json` fails when stdout is not a terminal, which it never is from the Bash tool.
+
+`--mcp-config <file>` adds servers to whatever the repository already provides, with no trust prompt. Avoid `--strict-mcp-config`: it limits the session to that file and switches the repository's own servers off. A worker started in the target repository picks up that repository's server pins and its gitignored `env`.
+
+`--worktree` creates `.claude/worktrees/task-<N>/` on a new branch; a worktree holds committed content only, so a worker that needs an uncommitted file (a local `.mcp.json`, a fixture) must run in the main checkout instead. `--bg` returns immediately and prints the id that `attach`, `logs`, `stop`, and `rm` take. The documentation describes isolation checks that keep a worktree session from editing the main checkout; still review the diff scope at integration. After the task merges, clean up with `claude rm <id>` and `git worktree remove .claude/worktrees/task-<N>`.
+
+## Credentials for local workers
+
+A local worker that needs MySpec tools gets a **long-lived personal access token**, not the manager's browser login: two servers sharing `~/.myspec/oauth_creds.json` rotate each other's refresh token, and the loser's next call fails with `Refresh token rejected`, then `Not authenticated` — which can take the manager's own tools down mid-run.
+
+1. **Check what the repository already gives the worker**: `cd <clone> && claude mcp list`. A row named `myspec` means the worker inherits a working server (the row shows its command, e.g. `npx -y @myspec/mcp-server`); add nothing.
+2. **Verify that server reaches the target project** before the run: call `list_projects` and look for the project id. A PAT is scoped to one deployment and one organisation, so the wrong one fails with `API token exchange failed … invalid, disabled, or expired`, or quietly lists another account's projects. When the PAT's deployment differs from `~/.myspec/settings.json`, that worker also needs `MYSPEC_USER_AUTH_URL` set to the PAT's auth host — `resolveConfig` reads `--user-auth-url`, then `MYSPEC_USER_AUTH_URL`, then the settings file, so a PAT alone does not redirect it.
+3. **Only when no `myspec` row exists**, hand the worker one through a temporary config. Keep the PAT in the gitignored `.claude/settings.local.json` (`env` block) and reference it as `${MYSPEC_API_TOKEN}`, so the secret stays in the environment and never lands on disk, in the brief, or in a log:
+
+   `/tmp/factory-<bundle>/.mcp.json`:
+
+   ```json
+   {
+     "mcpServers": {
+       "myspec": {
+         "command": "npx",
+         "args": ["-y", "@myspec/mcp-server"],
+         "env": { "MYSPEC_API_TOKEN": "${MYSPEC_API_TOKEN}" }
+       }
+     }
+   }
+   ```
+
+   ```bash
+   cd <clone> && MYSPEC_API_TOKEN="$(python3 -c 'import json;print(json.load(open(".claude/settings.local.json"))["env"]["MYSPEC_API_TOKEN"])')" \
+     claude --bg "$(cat <brief>)" --mcp-config /tmp/factory-<bundle>/.mcp.json --permission-mode auto
+   rm -f /tmp/factory-<bundle>/.mcp.json
+   ```
+
+   Do not add `--strict-mcp-config`: it restricts the session to this file and switches the repository's own servers off. Pin a prerelease (`@myspec/mcp-server@next`) only when the worker needs a tool that is not in the stable release yet, and say so in the brief.
 
 ## Remote Control
 
@@ -71,6 +109,8 @@ Writing a `Monitor` command for a wave (rules that have cost real watches):
 - Emit a baseline line on the first poll, then one line per change. A filter that only matches the happy path is indistinguishable from a dead worker; cover "no branch yet", the branch, the pull request, failing checks, and the terminal states (`MERGED`, `CLOSED`).
 - Never `echo "$json" | jq`: in `zsh`, `echo` eats backslash escapes and jq dies with `Invalid string: control characters ... must be escaped`, which produces a silent watch. Use `printf '%s'`, or let `gh` do it with `--jq`.
 - Match cloud workers by `claude/*` branches and `task N:` titles, not by the branch name the brief asked for.
+- Count only `FAILURE` and `TIMED_OUT` as failures; a `CANCELLED` check is usually a run superseded by a newer push.
+- Run multi-step shell logic (loops over pull requests, `read`/`set --` word splitting) under `bash` explicitly: the manager's shell may be `zsh`, which does not split unquoted variables, and a merge loop that silently mis-parses its guard can stop — or worse, proceed — for the wrong reason.
 - Poll GitHub every 60-90 s, re-arm on expiry, and check the current state directly when a watch expires with no events — an empty watch is a suspect watch, not proof that nothing happened.
 
 ## Cost

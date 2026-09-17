@@ -7,6 +7,10 @@ description: Build or refresh the factory wave plan from a MySpec tasks.md. Use 
 
 Tools are called as `mcp__plugin_myspec-mcp_myspec__<tool>`. Task grammar and the write-back rules are in the `myspec-mcp:implement` skill's references; this skill only reads.
 
+## 0. Verify bundle completion
+
+Before planning or dispatching workers, verify that the bundle's generate session is completed. Use `get_spec_session` with the session ID from the bundle metadata to check its status. If the session status is not `completed`, stop immediately and tell the user that the factory cannot start while the spec bundle is still being generated or edited on the MySpec platform. The user must complete their generate/edit session before factory workers can be dispatched. Only proceed to load the bundle and plan waves when the session status is `completed`.
+
 ## 1. Load the bundle
 
 Locate project and bundle (managed `<!-- myspec:start -->` block in `CLAUDE.md`, else `list_projects` and `list_spec_file`). `get_spec_file` and `read_spec_file` on `tasks.md` (keep the `content_version` for the manager's later write), `requirements.md`, `solution.md`, and the constitution. For OpenSpec bundles, tasks are `## N. Group` / `- [ ] N.M`; treat each `N.M` as a task with no declared dependencies and the group as its module.
@@ -41,6 +45,12 @@ Use `gh pr list --state open --json number,title,headRefName,labels,statusCheckR
 2. For each, list the solution modules and likely files: the `_Requirements:_` ids map to modules in `solution.md`; the task's implementation details name files. When two ready tasks share a module or file, they go in different waves (the lower task number first).
 3. Order the wave by milestone, then task number. Cap the wave at the concurrency limit the user set; leftover ready tasks form the next wave.
 4. Mark tasks the constitution or task text calls Large as single-session candidates only if their acceptance criteria are precise; otherwise flag them for splitting before dispatch.
+
+## 3b. Task shapes that change dispatch
+
+- **Decision tasks** ("resolve the open questions", "confirm scope"): the answer belongs to the user and usually edits `requirements.md`. The manager resolves them with the user, records the decisions as Clarifications, marks the task `[x]`, and dispatches nothing for it — a worker may not edit spec files.
+- **Contract freeze tasks** (shared types, stub routes, event kinds frozen before parallel branches start): check the freeze is complete before merging it — request bodies as well as responses, list response wrappers, internal events and RPC or subject names the branches exchange, error `reason` strings, and the unit of any offset or length (bytes, code points, UTF-16). Drift tests must fail in BOTH directions. Anything left out becomes an unfrozen coupling the manager has to relay by hand.
+- **Branch-ownership plans** (`tasks.md` assigns directory ownership and chains tasks inside a branch): dispatch one worker per branch chain rather than one per task, with the ownership map and the do-not-touch list in every brief.
 
 ## 4. Output
 
