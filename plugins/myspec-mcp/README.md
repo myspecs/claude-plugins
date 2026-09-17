@@ -1,93 +1,136 @@
 # myspec-mcp
 
-Connects Claude Code to the [MySpec](https://myspec.dev) platform and adds Spec Driven Development (SDD) skills on top of it: the specification bundle is the source of truth, each acceptance criterion becomes a test, and progress is recorded where every collaborator sees it.
+Connects Claude Code to the [MySpec](https://myspec.dev) platform and adds Spec Driven Development (SDD) skills on top of it. The spec bundle is the source of truth, each acceptance criterion becomes a test, and progress is written back to MySpec where every collaborator sees it.
 
 ## Overview
 
-MySpec is an AI architect that interviews you and produces a reviewable specification bundle: `constitution.md`, `requirements.md`, `solution.md`, and `tasks.md` for greenfield projects, or change proposals and requirement deltas for existing codebases (MySpec brownfield and OpenSpec formats).
+MySpec is an AI architect that interviews you and produces a spec bundle: `constitution.md`, `requirements.md`, `solution.md`, and `tasks.md` for new projects, or change proposals and requirement deltas for existing codebases (MySpec brownfield and OpenSpec formats).
 
-This plugin registers the official `@myspec/mcp-server` MCP server via `npx` and ships five skills so Claude Code can read those specs, implement them task by task, verify code against spec, write progress back, author new specs in the platform's exact formats, and share a local repository with a MySpec brownfield session.
+This plugin registers the official `@myspec/mcp-server` MCP server and adds five skills, so Claude Code can read those specs, build them task by task, check code against the spec, write progress back, write new specs in MySpec's formats, and share a local repository with a MySpec brownfield session.
 
 ## Features
 
-- Zero-config MCP registration: `npx -y @myspec/mcp-server` over stdio. No secrets in the plugin.
-- MySpec tools for projects, spec files with optimistic-concurrency writes, and attachments (17 tools on the stable 0.3.0 server). Spec sessions, artifacts, attachment listing and reading, event stream tokens, and paginated reads arrive with server 0.4.0 (today the `next` prerelease) and are documented ahead of time.
-- `setup` skill: prerequisites, sign-in, API tokens, dev environments, troubleshooting.
-- `implement` skill: resume from shared state, clarify before coding, derive tests from acceptance criteria, implement one task at a time, check it against the constitution, mark it done on the platform without clobbering other people's edits, and stop at milestone checkpoints.
-- `analyze` skill: read-only verification. Spec consistency (constitution alignment, requirement-to-task coverage with a percentage, ambiguity, dependency cycles) and convergence (does the code implement the spec; append-only gap tasks on approval).
-- `spec-authoring` skill: write constitution, requirements (EARS+), solution, tasks, proposals, requirement deltas, and OpenSpec changes exactly as MySpec's reviewers expect, then push them.
-- `reverse-bridge` skill: expose a local repo read-only to the MySpec cloud agent for brownfield spec sessions.
+- **No-config MCP server**: runs `npx -y @myspec/mcp-server` over stdio. The plugin holds no secrets.
+- **MySpec tools** for projects, spec files (with safe concurrent writes), attachments, spec sessions, artifacts, and event stream tokens.
+- **Build from the spec** (`implement`): resume where the team left off, ask about open points before coding, write tests from acceptance criteria, build one task at a time, check it against the constitution, mark it done on MySpec without overwriting other people's edits, and stop at milestones.
+- **Check the spec** (`analyze`, read-only): constitution alignment, requirement-to-task coverage with a percentage, unclear wording, dependency cycles, and whether the code matches the spec. Adds gap tasks only when you approve.
+- **Write specs** (`spec-authoring`): constitution, requirements (EARS+), solution, tasks, proposals, requirement deltas, and OpenSpec changes in the exact formats MySpec's reviewers expect, then push them.
+- **Share local code** (`reverse-bridge`): give a MySpec brownfield session read-only access to a local repository.
+- **Setup help** (`setup`): sign-in, API tokens, organizations, dev environments, and error fixes.
 
 ## Prerequisites
 
-- Node.js 22 or newer (`node -v`) and `npx`.
-- A MySpec account. Sign-in happens in the browser; API tokens are available for unattended use.
-- Network access to `auth.myspec.dev` and `app.myspec.dev` (or the dev equivalents).
+- Claude Code with plugin support (`/plugin` works).
+- Node.js 22 or newer (`node -v`) with `npx` on your `PATH`.
+- A MySpec account.
+- Network access to `auth.myspec.dev` and `app.myspec.dev` (or the dev hosts if you use the dev platform).
 
 ## Installation
 
-```
+### 1. Install the plugin
+
+Inside Claude Code:
+
+```text
 /plugin marketplace add myspecs/claude-plugins
 /plugin install myspec-mcp@myspec
 ```
 
-Restart Claude Code, then sign in once from your terminal (or with the `!` prefix inside Claude Code):
+Or from a terminal:
 
 ```bash
-npx -y @myspec/mcp-server login
+claude plugin marketplace add myspecs/claude-plugins
+claude plugin install myspec-mcp@myspec
 ```
 
-Check with `/mcp` that `myspec` is connected, or ask Claude to "set up MySpec".
+### 2. Restart Claude Code
 
-## Authentication
+The MCP server and skills load at startup.
+
+### 3. Sign in
+
+Pick one:
 
 | Mode | How | When |
 |---|---|---|
-| Browser sign-in (default) | `npx -y @myspec/mcp-server login` (add `--org <slug>` to pin an organization, `--paste` on remote machines) | Interactive use on a laptop |
-| API token | Create it in the webapp (avatar menu, API tokens), then `export MYSPEC_API_TOKEN=msp_pat_...` in the shell that starts `claude` | CI, containers, shared machines. Needs server 0.3.0+ |
-| Dev environment | `login --user-auth-url https://dev-auth.myspec.dev` or `MYSPEC_USER_AUTH_URL` | Projects on the dev platform |
+| Browser sign-in (default) | `npx -y @myspec/mcp-server login`. Add `--org <slug>` to pick an organization, or `--paste` on a remote machine without a browser | Your own laptop |
+| API token | Create a token in the MySpec webapp (avatar menu, API tokens), then `export MYSPEC_API_TOKEN=msp_pat_...` in the shell that starts `claude` | CI, containers, shared machines |
+| Dev platform | `npx -y @myspec/mcp-server login --user-auth-url https://dev-auth.myspec.dev`, or set `MYSPEC_USER_AUTH_URL` | Projects on the MySpec dev platform |
 
-The MCP server starts before you sign in; tool calls simply return a login hint until you do, and work right after without a restart. Credentials live in `~/.myspec/` (`oauth_creds.json` mode 0600, `settings.json`). Never put a token in `.mcp.json` or any repository file.
+Run the login command in a terminal, or inside Claude Code with the `!` prefix. The server starts before you sign in; tools return a login hint until you do, then work without a restart. Credentials are stored in `~/.myspec/`. Never put a token in `.mcp.json` or any file in a repository.
+
+### 4. Check it works
+
+- `/mcp` shows `myspec` as connected.
+- Ask Claude: "set up MySpec and check I'm signed in." The `setup` skill runs the checks.
+
+### Install for a whole team
+
+Commit this to the repository's `.claude/settings.json`. Team members are offered the marketplace and plugin when they open the repository:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "myspec": { "source": { "source": "github", "repo": "myspecs/claude-plugins" } }
+  },
+  "enabledPlugins": {
+    "myspec-mcp@myspec": true
+  }
+}
+```
+
+Each person still signs in (or exports `MYSPEC_API_TOKEN`) on their own machine.
+
+### Update or remove
+
+```text
+/plugin marketplace update myspec
+/plugin update myspec-mcp@myspec
+```
+
+Restart Claude Code after updating. To remove: `/plugin uninstall myspec-mcp@myspec`.
 
 ## Components
 
 ### Skills
 
-| Skill | Invoke | Triggers on |
+| Skill | Invoke | Starts when you mention |
 |---|---|---|
-| `setup` | `/myspec-mcp:setup` | "set up MySpec", login and token questions, `Not authenticated`, `missing required claims`, HTTP 401/404 from MySpec |
-| `implement` | `/myspec-mcp:implement` | "implement the next task", resume, tasks.md, requirements.md, FR/NFR ids, pulling specs, applying a change proposal |
-| `analyze` | `/myspec-mcp:analyze` | "verify the spec", "does the code match the spec", coverage, traceability, drift, milestone checkpoints |
-| `spec-authoring` | `/myspec-mcp:spec-authoring` | writing or updating any spec document, EARS+ acceptance criteria, AR/BR/CR deltas, OpenSpec changes, pushing specs |
-| `reverse-bridge` | `/myspec-mcp:reverse-bridge` | sharing a local repo with a MySpec brownfield session, `reverse_mcp_unavailable` |
+| `setup` | `/myspec-mcp:setup` | "set up MySpec", login or token questions, `Not authenticated`, `missing required claims`, HTTP 401/404 from MySpec |
+| `implement` | `/myspec-mcp:implement` | "implement the next task", resume, `tasks.md`, `requirements.md`, FR/NFR ids, pulling specs, applying a change proposal |
+| `analyze` | `/myspec-mcp:analyze` | "verify the spec", "does the code match the spec", coverage, traceability, drift, milestone checks |
+| `spec-authoring` | `/myspec-mcp:spec-authoring` | writing or updating a spec document, EARS+ acceptance criteria, AR/BR/CR deltas, OpenSpec changes, pushing specs |
+| `reverse-bridge` | `/myspec-mcp:reverse-bridge` | sharing a local repository with a MySpec brownfield session, `reverse_mcp_unavailable` |
 
-Skills also trigger automatically from natural language.
+You can call a skill by name or just describe the task.
 
 ### MCP server
 
-Server key `myspec`; tools are named `mcp__plugin_myspec-mcp_myspec__<tool>`. Full reference: [skills/implement/references/mcp-tools.md](skills/implement/references/mcp-tools.md).
+The server is named `myspec`. Its tools show up in Claude Code as `mcp__plugin_myspec-mcp_myspec__<tool>`.
 
 | Group | Tools |
 |---|---|
-| Projects (0.3.0+) | `list_projects`, `get_project`, `create_project`, `update_project`, `archive_project`, `unarchive_project`, `delete_project` |
-| Spec files (0.3.0+) | `list_spec_file`, `get_spec_file`, `read_spec_file`, `download_spec_file`, `upload_spec_file`, `update_spec_file`, `move_spec_file_to_trash`, `restore_spec_file_from_trash` |
-| Attachments | `get_attachment`, `upload_attachment` (0.3.0+); `list_attachments`, `read_attachment` (0.4.0+) |
-| Spec sessions (0.4.0+) | `list_spec_sessions`, `get_spec_session`, `rename_spec_session`, `archive_spec_session`, `unarchive_spec_session`, `delete_spec_session` |
-| Artifacts (0.4.0+) | `list_artifacts`, `get_artifact`, `read_artifact_file`, `create_artifact`, `write_artifact_revision`, `rollback_artifact` |
-| Stream tokens (0.4.0+) | `create_stream_token`, `list_stream_tokens`, `revoke_stream_token` |
+| Projects | `list_projects`, `get_project`, `create_project`, `update_project`, `archive_project`, `unarchive_project`, `delete_project` |
+| Spec files | `list_spec_file`, `get_spec_file`, `read_spec_file`, `download_spec_file`, `upload_spec_file`, `update_spec_file`, `move_spec_file_to_trash`, `restore_spec_file_from_trash` |
+| Attachments | `get_attachment`, `upload_attachment`, `list_attachments`, `read_attachment` |
+| Spec sessions | `list_spec_sessions`, `get_spec_session`, `rename_spec_session`, `archive_spec_session`, `unarchive_spec_session`, `delete_spec_session` |
+| Artifacts | `list_artifacts`, `get_artifact`, `read_artifact_file`, `create_artifact`, `write_artifact_revision`, `rollback_artifact` |
+| Stream tokens | `create_stream_token`, `list_stream_tokens`, `revoke_stream_token` |
 
-## How the implementation loop works
+Full tool reference: [skills/implement/references/mcp-tools.md](skills/implement/references/mcp-tools.md).
 
-1. Resume: read `tasks.md` checkboxes (shared truth), the local `.specs/<bundle>/progress.md`, and git history.
+## How `implement` works
+
+1. Resume: read the `tasks.md` checkboxes on MySpec, the local `.specs/<bundle>/progress.md`, and git history.
 2. Read the constitution in full, then only the requirement and solution sections the next task cites.
-3. Clarify open decisions with at most five multiple-choice questions; answers are written back into the bundle.
-4. One test per acceptance criterion (EARS+ patterns map directly to test shapes), then the implementation, then a constitution check.
-5. Mark the task `[x]` with optimistic concurrency, update the progress note, commit if the user opted in.
-6. At each milestone: full test run, convergence analysis, human review before continuing.
+3. Ask about open decisions (at most five multiple-choice questions) and write the answers back into the bundle.
+4. Write one test per acceptance criterion, then the code, then check it against the constitution.
+5. Mark the task `[x]` on MySpec, update the progress note, and commit if you asked for commits.
+6. At each milestone: run the full test suite, check code against the spec, and wait for your review.
 
 ## Usage examples
 
-```
+```text
 Set up MySpec and check I'm signed in.
 Implement the next task from the "inventory-service" project on MySpec.
 Analyze the spec bundle for project X and show requirement coverage.
@@ -100,25 +143,37 @@ Share this repo with my MySpec brownfield session.
 
 ## Configuration
 
+Set these in the shell that starts `claude`:
+
 | Variable | Purpose |
 |---|---|
-| `MYSPEC_API_TOKEN` | Long-lived API token for unattended use (0.3.0+). Set in the shell that launches Claude Code |
-| `MYSPEC_USER_AUTH_URL` | Auth server for non-production environments |
-| `MYSPEC_DOWNLOAD_ROOT` | Cache root for `read_spec_file` (default `~/.myspec`) |
-| `MYSPEC_AI_AGENT_WS_URL` | ai-agent WebSocket URL override for `reverse` |
-| `MYSPEC_ACCESS_TOKEN` | Static access token for `reverse` only; rejected by the MCP server itself |
+| `MYSPEC_API_TOKEN` | Long-lived API token for unattended use |
+| `MYSPEC_USER_AUTH_URL` | Auth server for a non-production MySpec platform |
+| `MYSPEC_DOWNLOAD_ROOT` | Cache folder for `read_spec_file` (default `~/.myspec`) |
+| `MYSPEC_AI_AGENT_WS_URL` | Override the ai-agent WebSocket URL for the reverse bridge |
+| `MYSPEC_ACCESS_TOKEN` | Static access token for the reverse bridge only; the MCP server rejects it |
 
-`download_spec_file` writes under `.specs/` in the directory Claude Code was started in. Add `.specs/` to your project's `.gitignore`.
+`download_spec_file` writes under `.specs/` in the folder Claude Code was started in. Add `.specs/` to your project's `.gitignore`.
 
 ## Troubleshooting
 
-See [skills/setup/references/troubleshooting.md](skills/setup/references/troubleshooting.md). Common cases:
+| Problem | Fix |
+|---|---|
+| `myspec` shows as failed in `/mcp` on first use | Check `node -v` is 22 or newer. Run `npx -y @myspec/mcp-server --version` once to fill the npx cache, then restart Claude Code. |
+| `Not authenticated` or "run login" | Run `npx -y @myspec/mcp-server login`, or export `MYSPEC_API_TOKEN`. |
+| `Could not discover endpoints` without `Not authenticated` | MySpec is unreachable: check your network and the `userAuthUrl` in `~/.myspec/settings.json`, then retry. |
+| `missing required claims (sub, org)` or `no active organization` | You belong to more than one organization. Run `npx -y @myspec/mcp-server login --org <slug>`. |
+| HTTP 401 while using an API token | The token and platform do not match (for example a dev token against production). Set `MYSPEC_USER_AUTH_URL` to the platform the token came from, or create a token there. |
+| HTTP 404 for a project you can see in the webapp | You are signed in to the other platform (production is the default). Sign in again with the right `--user-auth-url`. |
+| `OAuth code exchange failed: HTTP 401` during `login --paste` | The code expired (60 seconds). Sign in again and paste right away. |
+| `Pasted token is missing a state suffix` | Copy the whole `<code>.<state>` value from the page, including the dot. |
+| Error that `oauth_creds.json` is readable by others | Run `chmod 600 ~/.myspec/oauth_creds.json`. |
+| A tool listed above is missing, or `MYSPEC_API_TOKEN` is ignored | Your cached server is old. Run `npx -y @myspec/mcp-server@latest --version`, then restart Claude Code. |
+| Two sets of MySpec tools (`mcp__myspec__*` and `mcp__plugin_myspec-mcp_myspec__*`) | A project `.mcp.json` or `claude mcp add` also registers `myspec`. Remove that entry (or run `claude mcp remove myspec`) and keep the plugin. |
+| Skills do not appear after install or update | Restart Claude Code. For updates, run `/plugin marketplace update myspec` before `/plugin update myspec-mcp@myspec`. |
+| `reverse_mcp_unavailable` in a brownfield session | No reverse bridge is running for your account. Ask Claude to "share this repo with MySpec" (`reverse-bridge` skill). |
 
-- `Not authenticated`: run the login command above.
-- `missing required claims (sub, org)`: `npx -y @myspec/mcp-server login --org <slug>`.
-- `myspec` shows as failed in `/mcp` on first use: run `npx -y @myspec/mcp-server --version` once (warms the npx cache), confirm Node 22+, restart.
-- A tool from the 0.4.0 list is missing: the stable release is still 0.3.0. Wait for the release, or register `npx -y @myspec/mcp-server@next` yourself in a project `.mcp.json` and disable this plugin's server to avoid duplicates.
-- Two sets of MySpec tools: the project's own `.mcp.json` also declares `myspec`; remove one.
+More detail, including how to check your active organization: [skills/setup/references/troubleshooting.md](skills/setup/references/troubleshooting.md).
 
 ## License
 

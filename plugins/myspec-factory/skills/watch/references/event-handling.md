@@ -76,7 +76,7 @@ Spec changes mid-run are a human review event, not a manager decision. Pause new
 
 ### `attachment.created`
 
-Workers with MySpec access upload their Factory report as `factory-<bundle>-task-<N>-report.md` when they finish (the bundle is in the name because task numbers repeat across bundles and `override` would otherwise replace another bundle's report) (the brief asks for `upload_attachment` with `override: true`). On a matching `data.name`, read it with `read_attachment` (0.4.0+) or `get_attachment` with a download URL, then run `integrate` for task N. Other attachments are informational; mention them in the next report.
+Workers with MySpec access upload their Factory report as `factory-<bundle>-task-<N>-report.md` when they finish (the bundle is in the name because task numbers repeat across bundles and `override` would otherwise replace another bundle's report) (the brief asks for `upload_attachment` with `override: true`). On a matching `data.name`, read it with `read_attachment` (0.4.0+) or `get_attachment` with a download URL, then run `integrate` for task N. Lane workers upload `factory-<bundle>-lane-<L>-report.md`; run `integrate` for that lane's pull request. Other attachments are informational; mention them in the next report.
 
 ### `spec_session.updated`
 

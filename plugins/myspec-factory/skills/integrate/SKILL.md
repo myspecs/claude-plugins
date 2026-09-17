@@ -9,7 +9,7 @@ Tools are called as `mcp__plugin_myspec-mcp_myspec__<tool>`. This skill runs per
 
 ## 1. Collect
 
-Cloud workers may have pushed a branch without a pull request: `git fetch --prune` and `git branch -r --list 'origin/claude/*' 'origin/factory/*'`; for a branch whose worker reported a task number but no pull request exists, open one with `gh pr create --head <branch> --title "task N: <title>" --body-file <report>` using the report from the worker's final message. Then `gh pr list --state open --json number,title,headRefName,labels,isDraft,reviewDecision,statusCheckRollup,body` and match each pull request to a task by branch `factory/<bundle>/task-<N>` or title `task N:` (cloud sessions push `claude/`-prefixed branches, so the title match matters). Read the `## Factory report` at the end of the body. A missing report means the worker did not finish; treat as failed. A draft pull request or a report whose first line starts with `BLOCKED:` is blocked, not ready.
+Cloud workers may have pushed a branch without a pull request: `git fetch --prune` and `git branch -r --list 'origin/claude/*' 'origin/factory/*'`; for a branch whose worker reported a task number but no pull request exists, open one with `gh pr create --head <branch> --title "task N: <title>" --body-file <report>` using the report from the worker's final message. Then `gh pr list --state open --json number,title,headRefName,labels,isDraft,reviewDecision,statusCheckRollup,body` and match each pull request to a task by branch `factory/<bundle>/task-<N>` or title `task N:` (cloud sessions push `claude/`-prefixed branches, so the title match matters). A lane pull request (branch `factory/<bundle>/lane-<L>` or title `lane L:`) covers every task the `## Branch Plan` lists for that lane: verify each of them, and merge or hold the pull request as a whole. Read the `## Factory report` at the end of the body. A missing report means the worker did not finish; treat as failed. A draft pull request or a report whose first line starts with `BLOCKED:` is blocked, not ready.
 
 ## 2. Verify each pull request (read-only)
 
@@ -22,11 +22,11 @@ Cloud workers may have pushed a branch without a pull request: `git fetch --prun
    When several branches build against one contract, compare them directly — the producer's payloads, service names and response wrappers against the consumer's structs and client code, field by field. Neither branch's CI can see a mismatch between them.
    After a worker pushes fixes, re-verify only the fix commits (`git diff <verified-sha>..<head>`), item by item, with evidence and whether each test would fail on revert. A fix that is only partial goes straight back with the remaining gap.
 3. Constitution: the diff introduces no forbidden technology, pattern, or security violation. Delegate a read-only diff review to a subagent when the diff is large; ask it to report gaps against the acceptance criteria and constitution, not style.
-4. Scope: the diff touches only the modules and files the task named plus tests. Unrelated changes are reported back and the pull request is not merged until the worker removes them.
+4. Scope: the diff touches only the modules and files the task named plus tests. Unrelated changes are reported back and the pull request is not merged until the worker removes them. For a lane, the diff also stays inside the lane's `Owns` list; any path from another lane is a finding, and each shared contract is compared field by field with the other lanes' branches.
 5. Spec issues raised in the report (`BLOCKED: spec`, deviations): stop this lane, put the question to the user, and after the answer record it as `- Clarification:` under the task in `tasks.md` (or `## Clarifications` in `requirements.md` for requirement-level answers) before redispatching.
    Deviations are often NOT flagged as blocked: an extra fallback rung, a broader delete rule, an added service. Look for behaviour beyond the requirements in the diff and the report. Put each to the user with the trade-off (including what the reviewer recommends, if it differs), record the answer as a numbered Clarification, and tell the worker so it neither reverts a kept deviation nor keeps a rejected one.
 6. Red checks: a failure is the branch's until shown otherwise. Before re-running, establish that the diff does not touch the failing test or its code path and that the same test has failed elsewhere (another branch, main); then re-run the failed job, send the worker that evidence if a reviewer blamed the branch, and record the flaky test for the regression task. A `CANCELLED` run superseded by a newer push is not a failure.
-7. Reviewer stalls: when the automated reviewer has not reviewed a green pull request for well over its usual time, run your own verification meanwhile, and put the choice — keep waiting, or merge on your verification — to the user rather than lowering the gate yourself.
+7. Reviewer stalls: first check that a review was requested at all (`gh pr view <n> --json reviewRequests`, or `review_requested` events in `gh api repos/{owner}/{repo}/issues/<n>/timeline`). If no request was made, request it yourself with `gh pr edit <n> --add-reviewer <reviewer>`: that keeps the agreed gate, it does not lower it. When a requested reviewer has not reviewed a green pull request for well over its usual time, run your own verification meanwhile, and put the choice — keep waiting, or merge on your verification — to the user rather than lowering the gate yourself.
 
 ## 3. Merge per policy
 
@@ -42,7 +42,7 @@ Cloud workers may have pushed a branch without a pull request: `git fetch --prun
 
 ## 4. Mark done on MySpec
 
-For each merged task: `get_spec_file` for the current `content_version`, `read_spec_file` for the body, flip that task's `- [ ]` to `- [x]`, keep every other byte, and `update_spec_file` with `expected_version`. On a conflict, take the new token, re-read, re-apply, retry. After the write, the event feed echoes a `spec_file.updated` frame carrying the returned `content_version`; ignore it. Add an indented note under the task with the pull request number: `  - Merged: PR #123 (<short sha>)`. One update per task is fine; batching all merged tasks into one update is better when several merged.
+For each merged task: `get_spec_file` for the current `content_version`, `read_spec_file` for the body, flip that task's `- [ ]` to `- [x]`, keep every other byte, and `update_spec_file` with `expected_version`. On a conflict, take the new token, re-read, re-apply, retry. After the write, the event feed echoes a `spec_file.updated` frame carrying the returned `content_version`; ignore it. Add an indented note under the task with the pull request number: `  - Merged: PR #123 (<short sha>)`. One update per task is fine; batching all merged tasks into one update is better when several merged. A merged lane pull request marks every task of that lane in one update, each with its own `Merged:` note.
 
 ## 4b. Watch the merge land
 
@@ -63,7 +63,7 @@ Update each registry entry (`pr`, `status`: `pr-open`, `merged`, `blocked`, `fai
 
 ## 6. Milestone gate
 
-When the last task of a `## Milestone` is `[x]`:
+When the last task of a `## Milestone` is `[x]` (for a `tasks.md` with a `## Branch Plan`, lanes span every milestone and run at once, so run this gate once, after the last lane's pull request merges, over all milestones):
 
 1. Run the full test suite on the default branch (or ask the user to, when it needs infrastructure).
 2. Run the `myspec-mcp:analyze` skill in convergence mode for the milestone's requirement ids; report coverage and any missing, partial, contradicting, or unrequested items.

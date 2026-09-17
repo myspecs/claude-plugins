@@ -77,7 +77,7 @@ Each frame arrives as a notification. Keep `last_seq` from every event frame in 
 | `spec_file.updated` lifecycle shape (`data.state`): `trashed` on a bundle file | Stop dispatch, report; `restored`: re-read the file |
 | `spec_file.lock` (when subscribed) with state acquired on a bundle file | Someone is editing; delay manager writes to that file until released or taken over |
 | Any `spec_file.*` whose path is outside the bundle's directory | Ignore; mention in the next report |
-| `attachment.created` whose name matches `factory-<bundle>-task-<N>-report.md` | A worker finished and uploaded its report: run `integrate` for task N |
+| `attachment.created` whose name matches `factory-<bundle>-task-<N>-report.md` or `factory-<bundle>-lane-<L>-report.md` | A worker finished and uploaded its report: run `integrate` for task N, or for every task of lane L |
 | `spec_session.updated` with a completed status | A spec session finished; a new or revised bundle may exist. Offer to plan it |
 | `project.deleted` | Stop every worker you can (`SendMessage` or `claude -p "stop" --cloud <id>`); the token is already revoked, so set `stream.revoked_at`, stop the pull-request monitor, do not mint, report |
 | `stream.expiring`, or `expires_at` less than five minutes away | Rotate: mint a replacement with the same scope, open a new Monitor on it (no `?after=`; buffers are per token), wait for its `stream.ready`, then stop the old one. Drop any frame you have already processed. Update the registry |
@@ -93,6 +93,13 @@ Pull-request monitor lines: a line with `OPEN` and green checks for a task not y
 ## Keeping the feed alive
 
 A `Monitor` window lasts at most 60 minutes (max `timeout_ms=3600000`) and a token last 24 hours (default); neither renews itself. Re-arm on every expiry notice, and before asking the user a question that may wait a long time, check the token's `expires_at` and rotate first — a token that lapses while you wait leaves an unrecoverable gap. When a gap happens anyway, rotate and resync (`get_spec_file` on every bundle file) before relying on the board. Update `last_seq` from every event frame, and resume with `?after=<last_seq>` after any reconnect.
+
+A feed can also die with no notice reaching you: a `1006` drop the Monitor does not surface, a session restart (which stops every Monitor), or context compaction. Silence then looks exactly like a quiet project, and the URL cannot be retrieved again to reconnect. Check that the feed is alive:
+- After each of your own spec writes, expect its `spec_file.updated` frame within a minute. No frame means the feed is dead.
+- At every loop step (before integrating, dispatching, or asking the user), call `list_stream_tokens(resource_id: "<project_id>", mine_only: true, live_only: true)`. If the token's `last_connected_at` is older than your current Monitor's start, nothing is connected.
+- After any "background tasks didn't finish before the previous session ended" notice, treat every feed and pull-request Monitor as stopped.
+
+A dead feed whose URL you no longer hold cannot be resumed. Mint a replacement with the same scope, open a Monitor on it, and wait for `stream.ready`. Then resync (`get_spec_file` on every bundle file, `list_attachments` for reports), revoke the old token, and update the registry. When the remaining work needs no spec events (for example a last pull request watched through `gh`), revoke instead and say so.
 
 ## 4. Close
 

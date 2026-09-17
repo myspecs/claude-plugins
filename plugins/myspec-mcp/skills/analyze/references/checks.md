@@ -35,7 +35,7 @@ Weights follow the MySpec platform's own tasks reviewer: requirements coverage 3
 
 ### Sizing and organisation (15% + 10%)
 - Complexity values are Small, Medium, or Large; nothing implies more than five days (MEDIUM).
-- Milestones are outcome-named `## Milestone N: Name`, numbering is document-wide, `## Dependency Graph` closes the file (LOW).
+- Milestones are outcome-named `## Milestone N: Name`, numbering is document-wide, `## Dependency Graph` closes the file (LOW). A `## Branch Plan` section just before it is a plugin convention, not a finding; when present, flag a `_Dependencies:_` that crosses lanes or a path owned by two lanes (HIGH).
 
 ## Convergence mode
 
@@ -54,4 +54,4 @@ Also check:
 - Test traceability: percentage of criteria with a test whose name carries the requirement id.
 - Constitution drift: dependencies added, patterns introduced, or standards broken since the spec was approved (CRITICAL when forbidden).
 
-Remediation for missing or partial items is append-only. MySpec format: a `## Milestone N: Convergence` section before `## Dependency Graph`, task numbers continuing after the highest existing one, one task per gap in the standard format, each citing the requirement ids and sized Small or Medium. OpenSpec format: a `## N. Convergence` group with `- [ ] N.M` tasks. Existing tasks are never edited or renumbered.
+Remediation for missing or partial items is append-only. MySpec format: a `## Milestone N: Convergence` section before `## Dependency Graph` (before `## Branch Plan` when one exists), task numbers continuing after the highest existing one, one task per gap in the standard format, each citing the requirement ids and sized Small or Medium. OpenSpec format: a `## N. Convergence` group with `- [ ] N.M` tasks. Existing tasks are never edited or renumbered.

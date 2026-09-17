@@ -33,11 +33,16 @@ Every plugin must be listed in `.claude-plugin/marketplace.json`:
 { "name": "my-plugin", "source": "./plugins/my-plugin" }
 ```
 
-The marketplace `name` is `myspec`; users install with `/plugin install <plugin>@myspec`.
+The marketplace `name` is `myspec`, so plugin ids are `<plugin>@myspec`. User-facing installation and troubleshooting live in `README.md`; keep development guidance here and do not repeat it there.
 
 ## Documentation requirements
 
-Plugin `README.md`: Overview, Features, Prerequisites, Installation, Components, Usage examples, Configuration, Troubleshooting, License.
+READMEs are for users; this file is for developing the plugins. Do not repeat content between them.
+
+- Root `README.md`: what each plugin does, how to install and update them in Claude Code, and troubleshooting.
+- Plugin `README.md`: Overview, Features, Prerequisites, Installation (marketplace add, install, restart, sign-in, verify, update or remove), Components, Usage examples, Configuration, Troubleshooting, License. Write in plain language.
+- Troubleshooting in READMEs covers problems a user can see and fix. Internal quirks that skills already handle (CLI flag conflicts, TTY wrappers, branch prefixes, session title rewrites) go in the skill's `references/` or in the conventions below, not in a README.
+- Local development (installing from a path, validating) is covered under Validation below.
 
 `SKILL.md` frontmatter:
 
@@ -99,22 +104,24 @@ Then install locally (`/plugin marketplace add /path/to/claude-plugins`, `/plugi
 The platform emits `- [ ]` and never parses checkboxes, so these are plugin conventions. Keep every skill consistent with them:
 
 - Done is `- [x]` in `tasks.md`, written with `expected_version`. No other markers.
-- Extra information goes in indented sub-bullets under a task (`- Clarification:`, `- Progress:`, `- Merged:`) or in trailing sections (`## Clarifications` in requirements.md, `## Milestone N: Convergence` in tasks.md). Never new annotation lines or inline markers.
+- Extra information goes in indented sub-bullets under a task (`- Clarification:`, `- Progress:`, `- Merged:`) or in trailing sections (`## Clarifications` in requirements.md, `## Milestone N: Convergence` and `## Branch Plan` in tasks.md). Never new annotation lines or inline markers.
 - Local, gitignored state lives in `.specs/<bundle>/progress.md`.
 - Analysis is read-only; remediation needs approval and is append-only.
 - Commits happen only when the user opts in at the start of a loop.
 
 ## myspec-factory conventions
 
-- The output style is never `force-for-plugin`; users opt in with `/config` or `"outputStyle": "myspec-factory:Software Factory Manager"` (plugin styles resolve as `<plugin>:<style name>`; the bare name does not resolve).
+- The output style is never `force-for-plugin`; users opt in (see `README.md`). Skills and settings refer to it as `myspec-factory:Software Factory Manager`, because plugin styles resolve as `<plugin>:<style name>` and the bare name does not resolve.
 - Merging is decided by the manager under the agreed policy or by the user; auto-merge is never enabled (`gh pr merge --auto`, GitHub's auto-merge toggle, merge queues). Per-pull-request Auto-fix is expected and never merges.
+- No dispatch until the spec gate passes: the whole bundle is complete, `myspec-mcp:analyze` (spec consistency) has no CRITICAL or HIGH finding, and every doubt is clarified with the user. A mid-run spec change or a `BLOCKED: spec` report pauses all dispatch until the gate passes again.
 - The manager is the only writer of `tasks.md`; workers report through pull requests (`factory/<bundle>/task-<N>` branches, `task N:` titles, a `## Factory report` in the body).
+- A brownfield bundle may have no `tasks.md`. The manager then writes one after the rest of the bundle passes the spec gate, grouped into lanes that run in parallel (one worker, one `factory/<bundle>/lane-<L>` branch, one `lane L:` pull request each). Parallelism is not mandatory: a small change is one lane; only a large change with independent parts gets 2-3 lanes (disjoint paths, no cross-lane dependencies, shared contracts written in full in both lanes), recorded in `## Branch Plan`, and uploads it only after the user approves. Bundles that ship their own `tasks.md` keep wave planning.
 - The board is derived from platform checkboxes and open pull requests; `.specs/<bundle>/factory-run.md` is a cache.
 - Stream token URLs from `create_stream_token` go straight into `Monitor` and are never written to any file, log, commit, issue, or reply; the registry keeps only the token id, prefix, expiry, and last `seq`.
 - Every dispatched session is recorded at once in `.specs/<bundle>/factory-sessions.json` (task, session id, URL, branch, status); steering uses the id from that file with `claude -p "<message>" --cloud <session_id>`.
 - Dispatch order: Agent tool `isolation: "remote"`, `claude --cloud`, Agent tool `isolation: "worktree"`, `claude --bg --worktree`. Verify availability; do not assume.
 - Every cloud command runs from a local clone of the target repository (`cd <clone> && claude …`), and `claude --cloud` needs a TTY: dispatch through `script -q <file> claude --cloud "$(cat <brief>)" </dev/null`. The cloud clones the GitHub remote of the current directory at the current branch, rewrites the session title, and pushes its own `claude/`-prefixed branch.
-- The manager session runs with Remote Control connected (`claude --remote-control` or `/remote-control`); steering order is `SendMessage` to the cloud session's listing name, then `claude -p ... --cloud <id>`. Worker briefs start with the line `factory <bundle> task <N>: <title>` because that becomes the session title.
+- The manager session runs with Remote Control connected (`claude --remote-control` or `/remote-control`); steering order is `SendMessage` to the cloud session's listing name, then `claude -p ... --cloud <id>`. Worker briefs start with the line `factory <bundle> task <N>: <title>` (or `factory <bundle> lane <L>: <name>`) because that becomes the session title.
 - Refer to the other plugin's skills by name (`myspec-mcp:implement`), never by relative path; plugins are cached in separate version directories.
 
 ## Writing style for skills

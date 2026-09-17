@@ -31,6 +31,7 @@ Every worker session the manager starts is recorded in a local registry so the m
 }
 ```
 
+- Lane workers (manager-planned `tasks.md` with a `## Branch Plan`): add `"lane": <L>` and `"tasks": [<N1>, <N2>, …]`, set `task` to the first task of the lane, and expect branch `factory/<bundle>/lane-<L>`.
 - `path`: `cloud-agent` (Agent tool, remote), `cloud-cli` (`claude --cloud`), `worktree-agent`, or `worktree-cli` (`claude --bg`).
 - `agent_name`: the name the session shows in `ListAgents` while the manager is connected to Remote Control (the brief's first line); `SendMessage` uses it. `null` until seen.
 - `session_id`: the cloud session id (`session_...` or `cse_...`), the background agent id, or the `claude --bg` id. Store the bare id; the `View:` line's query string (`?from=cli&m=0`) is dropped when saving the URL.

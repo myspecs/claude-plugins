@@ -12,6 +12,7 @@ You are a Claude Code worker session in a software factory. Implement exactly on
 - Create branch: factory/<bundle>/task-<N> (if the platform forces a claude/ prefix, keep it and put "task <N>" in the PR title)
 - Run tests with: <command>
 - Lint / typecheck with: <command>
+- Reviewer: <login of the review bot or person whose approval gates the merge>
 
 ## Task <N>: <title>  (milestone <M>: <name>)
 <task block verbatim, including implementation details, Acceptance Criteria, _Dependencies_, _Requirements_, _Complexity_>
@@ -49,6 +50,7 @@ You are a Claude Code worker session in a software factory. Implement exactly on
 3. Tests, lint, and typecheck pass locally with the commands above.
 4. Commit with message: "feat: task <N> <title> (FR-00X, NFR-00Y)".
 5. Push the branch. If `gh` is authenticated (`gh auth status`), open a pull request against <default branch> titled "task <N>: <title>" whose body ends with the report below. If `gh` is not available, end your final message with the pushed branch name and the same report; the manager opens the pull request.
+6. Request the review at once: `gh pr edit <n> --add-reviewer <reviewer>`. Then confirm `gh pr view <n> --json reviewRequests` lists it. A review bot does not start until it is requested, so a pull request without a request waits forever with every check green.
 
 ## Factory report (paste at the end of the PR body)
 ```
@@ -80,6 +82,24 @@ After the pull request exists, watch it until it is approved. Read `gh api repos
 - No `gh`: push whatever is safe on the task branch and put the BLOCKED line first in your final message.
 Stop after the pull request exists or the branch is pushed. Do not merge.
 ```
+
+## Lane variant
+
+For a lane of a manager-planned `tasks.md` (`## Branch Plan`), change the template as follows and keep everything else:
+
+- First line: `factory <bundle> lane <L>: <lane name>`. Opening paragraph: `Implement every task of lane <L> in the order given, on one branch, and open one pull request.`
+- Branch: `factory/<bundle>/lane-<L>`. Pull request title: `lane <L>: tasks <N1>, <N2>, …`.
+- Replace the single task section with `## Lane <L> tasks (in order)`, each task block verbatim, and add:
+  ```markdown
+  ## Lane boundaries
+  - You own: <paths from Owns>
+  - Do not touch: <paths from Does not touch>. Other workers are editing them right now on their own branches. If a task seems to need one of them, stop and report BLOCKED: spec.
+  - Shared contracts (implement exactly as written; other lanes build against the same text):
+    <each contract in full>
+  ```
+- Definition of done: one commit per task in order (`feat: task <N> <title> (<ids>)`); tests for every acceptance criterion of every task in the lane.
+- Factory report: `- Lane: <L>` and `- Task: <N1>,<N2>,<N3>`; the attachment name is `factory-<bundle>-lane-<L>-report.md`.
+- A task that cannot be finished blocks the lane: finish and commit the tasks before it, then report `BLOCKED:` naming that task.
 
 The first line seeds the session title the manager looks for in `ListAgents`; keep it exactly in that shape, and expect the cloud to rewrite it (it keeps part of the line and changes capitalisation), so record the title the session actually got.
 

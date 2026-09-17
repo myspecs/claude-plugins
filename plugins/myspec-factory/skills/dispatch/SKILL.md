@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Spawn one Claude Code worker session per ready factory task with a self-contained brief. Use when the user says "dispatch the wave", "start the workers", "spawn sessions for these tasks", "run task N in the cloud", or after the plan skill has produced a wave. Cloud sessions first (claude --cloud or a remote subagent), local git worktree sessions as fallback. Never implements a task in the manager session.
+description: Spawn one Claude Code worker session per ready factory task (or per lane of a manager-planned tasks.md) with a self-contained brief. Use when the user says "dispatch the wave", "start the workers", "spawn sessions for these tasks", "run task N in the cloud", "start the lanes", or after the plan skill has produced a wave or lanes. Cloud sessions first (claude --cloud or a remote subagent), local git worktree sessions as fallback. Never implements a task in the manager session.
 ---
 
 # Factory dispatch
@@ -16,6 +16,11 @@ Brief checks that have cost a review round when skipped:
 - List the test, lint and typecheck commands of every project the task may touch, taken from that project's pull-request workflow.
 - State the production rule: nothing fake, stubbed, or half-wired may become reachable in a production build. A consumer built ahead of its provider stays hidden or inert until the integration task wires it.
 - Paste the contract notes other workers already produced (response shapes, event fields, service names, encodings) into later briefs.
+- Name the reviewer whose approval gates the merge (for example the review bot) and tell the worker to request that review as soon as the pull request exists. Workers skip it when the brief only says to re-request review after fixes.
+
+### Lane briefs (bundles with a `## Branch Plan`)
+
+When `tasks.md` has a `## Branch Plan` section (a manager-planned brownfield bundle), build one brief per lane instead of per task and dispatch every lane at once; the concurrency cap was already applied when the lanes were planned. A lane brief carries, on top of the above: every task of the lane verbatim in the plan's order; the lane's `Owns` and `Does not touch` lists; each shared contract in full; branch `factory/<bundle>/lane-<L>`; one commit per task in order (`feat: task <N> <title> (<ids>)`); one pull request titled `lane <L>: tasks <N1>, <N2>, …` whose Factory report lists every task; and the report attachment name `factory-<bundle>-lane-<L>-report.md`. The brief's first line is `factory <bundle> lane <L>: <lane name>`. Use `--worktree lane-<L>` for local workers. Record one registry entry per lane with its `lane` number and `tasks` list.
 
 ## 2. Preflight, once per wave
 
@@ -36,7 +41,7 @@ Before the first cloud dispatch, in the **local clone of the target repository**
 
 Every command that starts or steers a cloud session begins with `cd <clone> &&`; the Bash tool's working directory does not carry over between calls.
 
-Never exceed the concurrency cap. Never dispatch two tasks that share files in the same wave.
+Never exceed the concurrency cap. Never dispatch two tasks that share files in the same wave, or two lanes whose `Owns` lists overlap.
 
 ## 4. Dispatch and record
 
@@ -66,12 +71,12 @@ Read each `## Factory report` and each first push as it lands. When one worker's
 
 For a cloud worker that is still running, prefer one follow-up over a fresh session. Two channels, in order:
 
-1. `SendMessage` (needs this session connected to Remote Control): run `ListAgents`, find the worker's row (labelled `cloud`; its name is the session title, which is why every brief starts with the line `factory <bundle> task <N>: <title>`), and send the message to that name (append the `[ref]` only when the listing shows one). Cloud sessions receive messages but cannot message back, so ask the worker to answer through its pull request or branch, not in a reply.
+1. `SendMessage` (needs this session connected to Remote Control): run `ListAgents`, find the worker's row (labelled `cloud`; its name is the session title, which is why every brief starts with the line `factory <bundle> task <N>: <title>` or `factory <bundle> lane <L>: <lane name>`), and send the message to that name (append the `[ref]` only when the listing shows one). Cloud sessions receive messages but cannot message back, so ask the worker to answer through its pull request or branch, not in a reply.
 2. `claude -p "<failing check output or review comment>" --cloud <session_id>` with the id from `.specs/<bundle>/factory-sessions.json`, when Remote Control is not connected or the session has fallen off the bounded listing.
 
 Record the message and the channel in the entry's `notes`. Redispatch only when the session has ended, expired, or reported `BLOCKED`; append a new registry entry and mark the old one `redispatched`.
 
 ## Redispatch rules
 
-- A worker that reports `BLOCKED: spec` (ambiguous or contradictory spec) stops its lane; the manager records the question under the task in `tasks.md` as `- Clarification:` after the user answers, then redispatches.
+- A worker that reports `BLOCKED: spec` (ambiguous or contradictory spec) means the spec gate missed a gap: stop its lane and pause all new dispatch. The manager asks the user, records the answer under the task in `tasks.md` as `- Clarification:`, re-runs the spec gate, then redispatches.
 - A worker that fails (red checks, no pull request, timeout) is redispatched once with the failure output added to the brief. A second failure stops the lane and is reported. Two consecutive failures across the wave stop dispatching until the user decides.

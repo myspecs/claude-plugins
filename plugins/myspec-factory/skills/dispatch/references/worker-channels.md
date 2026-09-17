@@ -33,7 +33,7 @@ Write the message so it can be answered without a reply channel: "push a fix", "
 | Commits on the branch | `git ls-remote --heads origin 'claude/*'`, `git log origin/<branch>` | First push is not the end; workers keep committing |
 | Pull request and its `## Factory report` | `gh pr list`, `gh pr view <n> --json body,comments` | The contracted hand-back: tests run, deviations, `BLOCKED:` lines |
 | Review replies | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Workers briefed to handle their own review round answer here |
-| MySpec attachment | `factory-<bundle>-task-<N>-report.md` via the event feed (`watch` skill) | Only when the worker has MySpec tools and a token |
+| MySpec attachment | `factory-<bundle>-task-<N>-report.md` (or `-lane-<L>-report.md`) via the event feed (`watch` skill) | Only when the worker has MySpec tools and a token |
 | Agent-tool completion | Task notification with the agent's final report | `isolation: "remote"` and `isolation: "worktree"` paths only |
 | Session transcript | claude.ai/code/`<session_id>`, or `/tasks` in an interactive session | The manager cannot read it; ask the user when a worker's reasoning matters |
 
@@ -54,7 +54,7 @@ A watch that expires with no events is a suspect watch: check the state directly
 | Action | Command | When |
 |---|---|---|
 | Teleport | `cd <clone> && claude --teleport <session_id>` | Pull the worker's branch and history into the user's terminal to finish or debug by hand |
-| Open the pull request for it | `gh pr create --head <branch> --title "task N: <title>" --body-file <report>` | The worker pushed but never opened one |
+| Open the pull request for it | `gh pr create --head <branch> --title "task N: <title>" --body-file <report>` (lane: `--title "lane L: tasks N1, N2"`) | The worker pushed but never opened one |
 | Local verification | Read-only subagent in a throwaway worktree (`git worktree add --detach`) | Run the suites and check acceptance criteria without touching the user's checkout |
 
 Taking over is outward-facing work: opening a pull request, merging, or pushing needs the user's agreement unless the run's policy already covers it.
