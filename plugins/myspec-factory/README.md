@@ -81,7 +81,7 @@ In your clone of the target repository, start Claude Code and run:
 /myspec-factory:setup
 ```
 
-It checks MySpec and GitHub access, cloud readiness, and branch protection, then proposes repository settings so workers load `myspec-mcp`. It writes nothing until you approve.
+It checks MySpec and GitHub access, cloud readiness, and branch protection, then proposes repository settings so workers load `myspec-mcp`. It writes nothing until you approve. At the end it lists the MySpec projects you can access, asks you to pick one, and opens that project's live event feed, so you can start a run straight away.
 
 ### 4. Turn on the manager persona
 
@@ -130,12 +130,12 @@ Restart Claude Code after updating. To remove: `/plugin uninstall myspec-factory
 
 | Skill | Invoke | Purpose |
 |---|---|---|
-| `setup` | `/myspec-factory:setup` | Check MySpec and GitHub access and cloud readiness; propose repository settings so workers load `myspec-mcp` |
-| `watch` | `/myspec-factory:watch` | Open the project's live event feed and react to each event; polls when the feed is not available |
-| `plan` | `/myspec-factory:plan` | Build the board and group ready tasks into waves; write `tasks.md` when a brownfield bundle has none, as one lane or up to 3 parallel lanes by size |
-| `dispatch` | `/myspec-factory:dispatch` | Start one worker per ready task; cloud first, local worktree as fallback |
-| `integrate` | `/myspec-factory:integrate` | Verify and merge worker pull requests, mark tasks done on MySpec, run the milestone gate |
-| `shift` | `/myspec-factory:shift` | Draft and create a scheduled cloud routine for one unattended shift |
+| `setup` | `/myspec-factory:setup` | Check MySpec and GitHub access and cloud readiness; propose repository settings so workers load `myspec-mcp`; pick a MySpec project and open its event feed |
+| `watch` | Used by the manager | Open the project's live event feed and react to each event; polls when the feed is not available |
+| `plan` | Used by the manager | Build the board and group ready tasks into waves; write `tasks.md` when a brownfield bundle has none, as one lane or up to 3 parallel lanes by size |
+| `dispatch` | Used by the manager | Start one worker per ready task; cloud first, local worktree as fallback |
+| `integrate` | Used by the manager | Verify and merge worker pull requests, mark tasks done on MySpec, run the milestone gate |
+| `shift` | Used by the manager | Draft and create a scheduled cloud routine for one unattended shift |
 
 The manager also uses `myspec-mcp:implement` (how progress is written back) and `myspec-mcp:analyze` (the code-to-spec check at milestone gates).
 
@@ -143,10 +143,20 @@ The manager also uses `myspec-mcp:implement` (how progress is written back) and 
 
 1. Run `/myspec-factory:setup` in the repository and approve the settings it proposes.
 2. Switch to the Software Factory Manager style and ask: "Run the factory for project X, bundle Y."
-3. The manager opens the event feed, then asks once for the number of parallel workers, the merge policy, and whether cloud sessions are allowed. It checks that the spec is complete and asks you about every open question or doubt; nothing is dispatched until that passes. Then it plans wave 1 and tells you the cost. For a brownfield bundle without `tasks.md`, it first drafts the task list (one lane for a small change, up to 3 parallel lanes for a large one) and asks for your approval.
-4. Workers open pull requests titled `task N: <title>` (or `lane L: tasks …` for a lane) with a `## Factory report` at the end.
-5. The manager verifies each pull request, merges it, marks the task `[x]` on MySpec, and dispatches the next wave.
-6. At the end of a milestone it checks the code against the spec and stops for your review.
+3. The manager opens the event feed, then asks once for the number of parallel workers, the merge method, how much it may do without asking (the autonomy level, below), and whether cloud sessions are allowed. It checks that the spec is complete and asks you about every open question or doubt, bundling small defaults into one approve-or-change question; nothing is dispatched until that passes. Then it plans wave 1 and tells you the cost. For a brownfield bundle without `tasks.md`, it first drafts the task list (one lane for a small change, up to 3 parallel lanes for a large one) and asks for your approval.
+4. Workers open pull requests titled `task N: <title>` (or `task N1, N2: …` for a chain, `lane L: tasks …` for a lane) with a `## Factory report` at the end.
+5. The manager verifies each pull request, merges it once it passes the merge gate, watches the deploy, marks the task `[x]` on MySpec, and dispatches the next wave.
+6. At the end of a milestone it runs the test suite, checks the code against the spec, uploads a milestone summary, drafts the spec corrections and follow-up tasks, and asks you one question about what to apply and dispatch.
+
+### Autonomy levels
+
+| Level | Merges | Dispatches the next wave |
+|---|---|---|
+| `ask-each` | Asks before every merge | Asks |
+| `merge-on-gate` (recommended) | Merges on its own once the gate passes | Asks |
+| `full` | Merges on its own once the gate passes | Starts the next wave of the same milestone on its own when what it waits for has merged and deployed |
+
+At every level the manager still asks you about spec questions, changes a worker made beyond the spec, rewrites of spec documents, and starting the next milestone. The merge gate is the same at every level: the reviewer approved the pull request's latest commit, required checks are green, review threads are resolved, the pull request merges cleanly with auto-merge off, the manager's own verification covers every change, and no spec question is open.
 
 ## What workers deliver
 
@@ -154,7 +164,7 @@ One task, one pull request, titled `task N: <title>`. A lane worker does every t
 
 ## Safety and cost
 
-- The manager asks before starting sessions, writing repository settings, merging outside the agreed policy, or creating routines.
+- The manager asks before writing repository settings or creating routines, and never merges outside the agreed policy. It asks before starting sessions unless you chose the `full` autonomy level for the run.
 - Parallel sessions share your account's rate limit. The manager states how many sessions each wave starts and keeps to the limit you set.
 - No force pushes, no bypassing branch protection, no merging red pull requests, no auto-merge. It merges one pull request at a time and waits for that merge's CI/CD before the next.
 
@@ -175,10 +185,10 @@ Schedule a factory shift every night at 2am.
 |---|---|---|
 | `outputStyle: "myspec-factory:Software Factory Manager"` | `.claude/settings.local.json` of the managed repository | Turns on the manager persona for that checkout only |
 | Remote Control (`claude --remote-control` or `/remote-control`) | The manager's session | Lets the manager list cloud workers and message them |
-| Parallel workers, merge policy, cloud allowed | Asked once per run | Limits for every wave of the run |
+| Parallel workers, merge method, autonomy level, cloud allowed | Asked once per run, stored under `policy` in `.specs/<bundle>/factory-sessions.json` | Limits for every wave of the run; tell the manager to change the autonomy level at any time |
 | `extraKnownMarketplaces` and `enabledPlugins` | Repository `.claude/settings.json` (written by `setup` when you approve) | Lets workers load `myspec-mcp` |
 | `MYSPEC_API_TOKEN` | Cloud environment at claude.ai/code | MySpec access for cloud workers and scheduled shifts (they cannot use browser sign-in) |
-| `MYSPEC_API_TOKEN` (plus `MYSPEC_USER_AUTH_URL` if the token is from a non-default platform) | `env` in the managed repository's gitignored `.claude/settings.local.json` | MySpec access for local workers. A separate token keeps workers off the manager's browser sign-in, which two servers cannot share |
+| `MYSPEC_API_TOKEN` | `env` in the managed repository's gitignored `.claude/settings.local.json` | MySpec access for local workers. A separate token keeps workers off the manager's browser sign-in, which two servers cannot share |
 | `.specs/<bundle>/factory-sessions.json` | Local, gitignored | Record of every dispatched worker: task, session id, URL, branch, status |
 | `.specs/<bundle>/factory-run.md` | Local, gitignored | Run log and board cache |
 
@@ -191,7 +201,7 @@ Add `.specs/` to the repository's `.gitignore`.
 | **Software Factory Manager** is not in the output style list | Check `myspec-factory` is enabled in `/plugin`, then restart Claude Code. In settings files use `myspec-factory:Software Factory Manager`. |
 | The manager writes code or skips its checks | The style is not active. Switch with `/config`; a change in a settings file only applies to new sessions. |
 | The manager and local workers both lose MySpec access (`Refresh token rejected`, then `Not authenticated`) | They shared one browser sign-in. Give local workers their own `MYSPEC_API_TOKEN` in `.claude/settings.local.json`, then reconnect the manager's server in `/mcp`. |
-| A worker's token fails with `API token exchange failed … invalid, disabled, or expired` | The token is from a different platform or organization. Set `MYSPEC_USER_AUTH_URL` to the platform it came from, or create a token in the right organization. |
+| A worker's token fails with `API token exchange failed … invalid, disabled, or expired` | The token is revoked, expired, or from a different organization. Create a token in the organization that owns the project. |
 | Cloud dispatch is refused | Your plan or organization does not allow cloud sessions. Enable Claude Code on the web, or let the manager use local worktrees. |
 | Cloud workers do not show up, or the manager cannot message them | Connect Remote Control (`/remote-control`) in the manager session. Without it the manager can still steer workers with `claude -p "<message>" --cloud <session_id>`. |
 | Cloud workers cannot reach MySpec | Add `MYSPEC_API_TOKEN` to the cloud environment and allow network access to npm and the MySpec hosts. Briefs already include the needed spec text, so this only matters when a worker must read more. |
@@ -199,7 +209,7 @@ Add `.specs/` to the repository's `.gitignore`.
 | Two sets of MySpec tools in a worker | The repository enables `myspec-mcp` and also declares `myspec` in a root `.mcp.json`. Keep the plugin entry and remove the `.mcp.json` server. |
 | Auto-fix is not offered on a worker's pull request | Install the [Claude GitHub App](https://github.com/apps/claude) on the repository. Without it, workers only react while their session is running. |
 | A green pull request never gets a bot review | No review was requested. Run `gh pr edit <n> --add-reviewer <bot>`. |
-| The event feed went quiet | The connection dropped. Ask the manager to reopen the feed (`/myspec-factory:watch`); it creates a new token and revokes the old one. |
+| The event feed went quiet | The connection dropped. Ask the manager to reopen the feed ("reopen the event feed"); it creates a new token and revokes the old one. |
 | A deployment runs an older commit after two quick merges | Workflows that build a shared tag such as `:latest` raced. Re-run the workflow for the newest merge commit. |
 | A scheduled shift ran but did nothing | Read the routine's run log. The usual causes are a missing `MYSPEC_API_TOKEN` in the cloud environment, or a repository that was not prepared with `/myspec-factory:setup`. |
 

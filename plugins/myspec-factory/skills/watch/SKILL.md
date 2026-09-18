@@ -1,6 +1,7 @@
 ---
 name: watch
 description: Open the MySpec project event feed for a factory run and react to it. Use when the user says "watch the project", "listen for events", "open the event stream", "start the factory feed", "create a stream token for the factory", or when the Software Factory Manager begins a run or a wave and needs to know, without polling, when tasks.md or other spec files change, when a worker uploads its report, when a spec session completes, or when a project is deleted. Mints a stream token, feeds its URL straight into Claude Code's Monitor tool, and maps each event to a manager action.
+user-invocable: false
 ---
 
 # Factory watch
@@ -25,7 +26,7 @@ create_stream_token(
   resource_id: "<project_id>",
   event_types: ["spec_file.created", "spec_file.updated", "spec_file.deleted",
                 "attachment.created", "spec_session.updated", "project.updated", "project.deleted"],
-  ttl_seconds: <seconds for this run, for example 14400>,
+  ttl_seconds: 28800,   # 8 hours while workers run; see "Keeping the feed alive"
   label: "factory <bundle> <YYYY-MM-DD>"
 )
 ```
@@ -40,31 +41,20 @@ Before minting, `list_spec_file` for the project and cache `file_id` to `file_pa
 Monitor({
   ws: { url: "<url from the mint result>", protocols: ["v1"] },
   description: "myspec factory events for <bundle> (token <token_prefix>)",
-  persistent: true
+  timeout_ms: 3600000
 })
 ```
 
 Omit `?after=` on the first open so the feed starts from now. The first frame is `stream.ready`; check that its `resource.id` is the project and its `event_types` list is what you asked for, then note `last_seq`. Open the feed before deriving the board (or re-derive the board right after `stream.ready`), otherwise a write that lands between your read and the socket opening is lost.
 
-Open a second, bash-based Monitor for pull-request state, because cloud workers do not emit platform events unless they upload their report:
+Watch pull requests with the tested scripts in this skill's `scripts/` directory (this skill's base directory + `/scripts/`), because cloud workers do not emit platform events unless they upload their report. Never hand-write the loop: inline versions have failed on shell word splitting, on `echo "$json" | jq` in zsh, and on GitHub's lowercase status values.
 
-```bash
-d=$(mktemp -d)
-snap() {
-  gh pr list --state all --limit 200 --search "in:title task" \
-    --json number,title,state,isDraft,statusCheckRollup,headRefName \
-    --jq '.[] | "\(.number)|\(.state)|\(.isDraft)|\(.title)|\(.headRefName)|\([.statusCheckRollup[]? | (.conclusion // .state // .status)] | join(","))"' | sort
-}
-snap > "$d/prev"          # seed, so the first pass emits nothing
-while true; do
-  sleep 90
-  snap > "$d/cur" || continue
-  comm -13 "$d/prev" "$d/cur"
-  mv "$d/cur" "$d/prev"
-done
-```
+| Script | Watches | Exits |
+|---|---|---|
+| `pr-watch.sh <clone> "<title prefix>" --since <started_at>` | one worker's new branch, its pull request, failing and pending checks, review decision. The PR is the one whose title starts with the prefix ("task 3" never matches "task 30") created after `--since` (the session's `started_at`), so an older PR with the same title is ignored | when the pull request is merged or closed (exit 0) |
+| `postmerge-watch.sh <clone> <merge-sha> [base] [interval]` | the default-branch workflow runs of one merge commit | when the same finished set is seen twice: 0 all green, 1 any failure, 3 after 60 polls (also a merge that triggers no workflow) |
 
-Description: `factory pull requests for <bundle>`. `persistent: true`. Files rather than process substitution, because the Monitor's shell may be `/bin/sh`.
+Both print one line per change and nothing when the state is the same. Both print `github-unreachable (…)` when a GitHub call fails: that means the state is **unknown**, not empty. Never report "no branch", "no PR" or "no runs" from it — check directly with `git ls-remote`, `gh pr view` or `gh run list` first.
 
 ## 3. React
 
@@ -88,11 +78,23 @@ Each frame arrives as a notification. Keep `last_seq` from every event frame in 
 
 Session status: with Remote Control connected, `ListAgents` shows each cloud worker as busy or idle; an idle worker whose branch has not appeared is a candidate for a nudge through `SendMessage`.
 
-Pull-request monitor lines: a line with `OPEN` and green checks for a task not yet integrated triggers `integrate`; a line with `MERGED` that the manager did not merge itself means a human merged it; verify and mark `[x]`.
+Pull-request script lines: a new branch means the worker pushed (it may keep pushing; do not treat it as finished); a pull request with `pending=0`, empty `failing=[]` and `review=APPROVED` triggers `integrate` (whose gate still checks that the approval is on the current head); a new `head=` after an approval means the review must be requested again; `done: PR #<n> MERGED` that the manager did not merge itself means a human merged it — verify and mark `[x]`. A `github-unreachable` line triggers a direct check, never a report.
 
 ## Keeping the feed alive
 
-A `Monitor` window lasts at most 60 minutes (max `timeout_ms=3600000`) and a token last 24 hours (default); neither renews itself. Re-arm on every expiry notice, and before asking the user a question that may wait a long time, check the token's `expires_at` and rotate first — a token that lapses while you wait leaves an unrecoverable gap. When a gap happens anyway, rotate and resync (`get_spec_file` on every bundle file) before relying on the board. Update `last_seq` from every event frame, and resume with `?after=<last_seq>` after any reconnect.
+A `Monitor` window lasts at most 30 minutes in practice (pass `timeout_ms: 3600000`; the harness caps it) and a token lasts its `ttl_seconds`; neither renews itself.
+
+Quiet upkeep — none of these is a message to the user:
+- **Expiry notice:** re-arm the same watch at once. Reopen the feed with `?after=<last_seq>` (or `?after=0` while `last_seq` is null) so nothing is lost.
+- **Close `1006`, or a socket that ends with no reason:** reconnect the same URL with `?after=<last_seq>` right away. Idle sockets drop every 15-25 minutes; it is not a token problem.
+- **`stream.ready` after a reconnect that missed nothing:** record `last_seq` and carry on.
+
+Token lifetime:
+- Mint for the working session in front of you: 8 hours (`ttl_seconds: 28800`) while workers run, not the 24-hour default.
+- Rotate when `expires_at` is less than one Monitor window (30 minutes) away, at the next re-arm, not at the last minute: mint, open the new feed, wait for its `stream.ready`, then revoke the old token.
+- Revoke the token and stop every Monitor when nothing is in flight — a milestone gate reached, the run finished, or the factory idle waiting on the user with no worker running. Re-arming watches over an idle factory only costs turns. Mint a fresh token when work resumes.
+
+Before asking the user a question that may wait a long time while workers are still running, check the token's `expires_at` and rotate first — a token that lapses while you wait leaves an unrecoverable gap. When a gap happens anyway, rotate and resync (`get_spec_file` on every bundle file) before relying on the board. Update `last_seq` from every event frame, and resume with `?after=<last_seq>` after any reconnect.
 
 A feed can also die with no notice reaching you: a `1006` drop the Monitor does not surface, a session restart (which stops every Monitor), or context compaction. Silence then looks exactly like a quiet project, and the URL cannot be retrieved again to reconnect. Check that the feed is alive:
 - After each of your own spec writes, expect its `spec_file.updated` frame within a minute. No frame means the feed is dead.
@@ -103,8 +105,8 @@ A dead feed whose URL you no longer hold cannot be resumed. Mint a replacement w
 
 ## 4. Close
 
-At the end of the run or at a milestone gate: `revoke_stream_token(token_id)`, stop both monitors (TaskStop), and set `stream.revoked_at` in the registry.
+At the end of the run or at a milestone gate: `revoke_stream_token(token_id)`, stop every Monitor of the run (TaskStop), and set `stream.revoked_at` in the registry.
 
 ## Polling fallback (no stream tokens)
 
-Skip the mint. Run the pull-request Monitor above (it needs only `gh`). MCP tools cannot be called from a bash Monitor, so spec changes are detected from the manager loop itself: before every integrate and dispatch step, call `get_spec_file` on `tasks.md` and the other bundle files and compare `content_version` with the registry's last-known values; a change triggers the same reactions as the corresponding `spec_file.updated` frame. Worker reports are found with `list_attachments` (0.4.0+) or the pull-request monitor. Everything else in the manager loop stays the same.
+Skip the mint. Run the pull-request scripts above (they need only `gh` and `git`). MCP tools cannot be called from a bash Monitor, so spec changes are detected from the manager loop itself: before every integrate and dispatch step, call `get_spec_file` on `tasks.md` and the other bundle files and compare `content_version` with the registry's last-known values; a change triggers the same reactions as the corresponding `spec_file.updated` frame. Worker reports are found with `list_attachments` (0.4.0+) or the pull-request monitor. Everything else in the manager loop stays the same.

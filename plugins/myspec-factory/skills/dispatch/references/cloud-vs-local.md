@@ -66,7 +66,7 @@ Start every local worker with `--permission-mode auto` so it runs unattended: wi
 A local worker that needs MySpec tools gets a **long-lived personal access token**, not the manager's browser login: two servers sharing `~/.myspec/oauth_creds.json` rotate each other's refresh token, and the loser's next call fails with `Refresh token rejected`, then `Not authenticated` — which can take the manager's own tools down mid-run.
 
 1. **Check what the repository already gives the worker**: `cd <clone> && claude mcp list`. A row named `myspec` means the worker inherits a working server (the row shows its command, e.g. `npx -y @myspec/mcp-server`); add nothing.
-2. **Verify that server reaches the target project** before the run: call `list_projects` and look for the project id. A PAT is scoped to one deployment and one organisation, so the wrong one fails with `API token exchange failed … invalid, disabled, or expired`, or quietly lists another account's projects. When the PAT's deployment differs from `~/.myspec/settings.json`, that worker also needs `MYSPEC_USER_AUTH_URL` set to the PAT's auth host — `resolveConfig` reads `--user-auth-url`, then `MYSPEC_USER_AUTH_URL`, then the settings file, so a PAT alone does not redirect it.
+2. **Verify that server reaches the target project** before the run: call `list_projects` and look for the project id. A PAT is scoped to one organisation, so the wrong one fails with `API token exchange failed … invalid, disabled, or expired`, or quietly lists another organisation's projects.
 3. **Only when no `myspec` row exists**, hand the worker one through a temporary config. Keep the PAT in the gitignored `.claude/settings.local.json` (`env` block) and reference it as `${MYSPEC_API_TOKEN}`, so the secret stays in the environment and never lands on disk, in the brief, or in a log:
 
    `/tmp/factory-<bundle>/.mcp.json`:
@@ -104,12 +104,13 @@ Start the manager with `claude --remote-control "factory <bundle>"` or run `/rem
 | `claude --bg` | `claude agents`, `claude logs <id>` |
 | All | `gh pr list --state open` filtered by `factory/` branches or `task N:` / `lane L:` titles |
 
-Writing a `Monitor` command for a wave (rules that have cost real watches):
+Use the tested scripts in the `watch` skill's `scripts/` directory (`pr-watch.sh` per pull request, `postmerge-watch.sh` per merge) rather than writing a `Monitor` command. The rules below are what those scripts already implement; they matter only if a script has to be extended:
 
-- Emit a baseline line on the first poll, then one line per change. A filter that only matches the happy path is indistinguishable from a dead worker; cover "no branch yet", the branch, the pull request, failing checks, and the terminal states (`MERGED`, `CLOSED`).
+- Emit a baseline line on the first poll, then one line per change. A failed GitHub call prints `github-unreachable`, never an empty state. A filter that only matches the happy path is indistinguishable from a dead worker; cover "no branch yet", the branch, the pull request, failing checks, and the terminal states (`MERGED`, `CLOSED`).
 - Never `echo "$json" | jq`: in `zsh`, `echo` eats backslash escapes and jq dies with `Invalid string: control characters ... must be escaped`, which produces a silent watch. Use `printf '%s'`, or let `gh` do it with `--jq`.
 - Match cloud workers by `claude/*` branches and `task N:` or `lane L:` titles, not by the branch name the brief asked for.
 - Count only `FAILURE` and `TIMED_OUT` as failures; a `CANCELLED` check is usually a run superseded by a newer push.
+- `gh run list` reports `status` in lowercase (`queued`, `in_progress`, `completed`) and `conclusion` only once completed; a filter written for uppercase values treats every running job as finished.
 - Run multi-step shell logic (loops over pull requests, `read`/`set --` word splitting) under `bash` explicitly: the manager's shell may be `zsh`, which does not split unquoted variables, and a merge loop that silently mis-parses its guard can stop — or worse, proceed — for the wrong reason.
 - Poll GitHub every 60-90 s, re-arm on expiry, and check the current state directly when a watch expires with no events — an empty watch is a suspect watch, not proof that nothing happened.
 

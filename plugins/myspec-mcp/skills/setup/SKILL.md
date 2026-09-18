@@ -1,11 +1,12 @@
 ---
 name: setup
-description: Set up, sign in to, verify, or troubleshoot the MySpec MCP server (@myspec/mcp-server) in Claude Code. Use when the user says "set up MySpec", "connect to MySpec", "myspec login", "myspec not connected", "use a MySpec API token", "MYSPEC_API_TOKEN", "switch MySpec organization", "use the MySpec dev environment", or when any mcp__plugin_myspec-mcp_myspec__* tool call fails with "Not authenticated", "run login", "missing required claims (sub, org)", or an HTTP 401/404 from MySpec.
+description: Set up, sign in to, verify, or troubleshoot the MySpec MCP server (@myspec/mcp-server) in Claude Code. Use when the user says "set up MySpec", "connect to MySpec", "myspec login", "myspec not connected", "use a MySpec API token", "MYSPEC_API_TOKEN", "switch MySpec organization", or when any mcp__plugin_myspec-mcp_myspec__* tool call fails with "Not authenticated", "run login", "missing required claims (sub, org)", or an HTTP 401/404 from MySpec.
+user-invocable: true
 ---
 
 # MySpec MCP setup
 
-The `myspec-mcp` plugin registers the `myspec` MCP server as `npx -y @myspec/mcp-server` (stdio). Its tools appear as `mcp__plugin_myspec-mcp_myspec__<tool>`. The server starts fine before sign-in; every tool call errors with a login hint until the user signs in, and works immediately after (no restart needed).
+The `myspec-mcp` plugin registers the `myspec` MCP server as `npx -y @myspec/mcp-server` (stdio). Its tools appear as `mcp__plugin_myspec-mcp_myspec__<tool>`. The server starts fine before sign-in; every tool call errors with a login hint until the user signs in, and works immediately after (no restart needed). The plugin works against the production MySpec platform only (`https://auth.myspec.dev`, `https://app.myspec.dev`).
 
 Follow the steps in order. Stop at the first step that fails and give the user the fix.
 
@@ -57,11 +58,10 @@ For CI, containers, or any session without a browser, use a long-lived API token
    ```
 
    Never put the token in `.mcp.json`, `plugin.json`, or any file in a repository.
-3. For a token created on the dev environment, also export `MYSPEC_USER_AUTH_URL=https://dev-auth.myspec.dev`.
-4. Verify the token works before blaming the server. Run this only when the variable is already exported in the shell; never ask the user to paste the token into the chat:
+3. Verify the token works before blaming the server. Run this only when the variable is already exported in the shell; never ask the user to paste the token into the chat:
 
    ```bash
-   curl -sS -X POST "${MYSPEC_USER_AUTH_URL:-https://auth.myspec.dev}/api/auth/token/exchange" \
+   curl -sS -X POST "https://auth.myspec.dev/api/auth/token/exchange" \
      -H "x-api-key: $MYSPEC_API_TOKEN" -w '\n%{http_code}\n'
    ```
 
@@ -69,16 +69,7 @@ For CI, containers, or any session without a browser, use a long-lived API token
 
 Precedence is `MYSPEC_API_TOKEN`, then `apiToken` in `~/.myspec/oauth_creds.json`, then the refresh token saved by `login`. The winner is used exclusively. A rejected token fails the call rather than falling back to another identity.
 
-## 5. Dev environment and organization switching
-
-```bash
-npx -y @myspec/mcp-server login --user-auth-url https://dev-auth.myspec.dev   # dev environment
-npx -y @myspec/mcp-server login --org <slug>                                  # switch active organization
-```
-
-`login` writes the chosen environment to `~/.myspec/settings.json` and `logout` does not remove it. A machine that was ever signed in to dev keeps using dev until the user logs in against `https://auth.myspec.dev` again.
-
-## 6. Sign out
+## 5. Sign out
 
 ```bash
 npx -y @myspec/mcp-server logout

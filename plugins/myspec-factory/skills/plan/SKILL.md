@@ -1,6 +1,7 @@
 ---
 name: plan
 description: Build or refresh the factory wave plan from a MySpec tasks.md, or write the tasks.md a brownfield bundle lacks. Use when the user says "plan the factory run", "what can run in parallel", "build the waves", "which tasks are ready", "plan the tasks for this proposal", or before dispatching workers. Derives the board from platform checkboxes and open pull requests and groups ready tasks into waves of non-overlapping work; when the bundle has no tasks.md, plans the whole change into lanes sized to the change (one worker for a small change, up to 3 parallel lanes for a large one; one branch each) and uploads the list only after the user approves it.
+user-invocable: false
 ---
 
 # Factory plan
@@ -42,7 +43,7 @@ A MySpec brownfield bundle may be only `proposal.md` and a requirements delta; `
    - Shared contracts: <each contract, and the task numbers in both lanes that carry its full text>
    ```
 
-5. Show the user a lanes table (lane, branch, tasks, owned paths, size) and the draft. Apply every change they ask for; do not upload before they approve.
+5. Show the user a lanes table (lane, branch, tasks, owned paths, size) and the draft, then ask for approval with `AskUserQuestion` (approve, or change). Apply every change they ask for; do not upload before they approve. Draft large task lists with a subagent into `.specs/<bundle>/draft/` and run the self-checks in the `integrate` skill's §4c before showing them.
 6. Upload with `upload_spec_file` (`file_path` `specs/<bundle>/tasks.md`, `file_type` `tasks`), then `get_spec_file` for its `content_version`. Note in `.specs/<bundle>/factory-run.md` that the manager authored it and the user approved it.
 7. Re-run the spec gate on the whole bundle, now including `tasks.md`. Then the plan has a single wave: every lane at once, one worker per lane (see `dispatch`).
 

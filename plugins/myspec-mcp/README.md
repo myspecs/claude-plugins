@@ -16,14 +16,14 @@ This plugin registers the official `@myspec/mcp-server` MCP server and adds five
 - **Check the spec** (`analyze`, read-only): constitution alignment, requirement-to-task coverage with a percentage, unclear wording, dependency cycles, and whether the code matches the spec. Adds gap tasks only when you approve.
 - **Write specs** (`spec-authoring`): constitution, requirements (EARS+), solution, tasks, proposals, requirement deltas, and OpenSpec changes in the exact formats MySpec's reviewers expect, then push them.
 - **Share local code** (`reverse-bridge`): give a MySpec brownfield session read-only access to a local repository.
-- **Setup help** (`setup`): sign-in, API tokens, organizations, dev environments, and error fixes.
+- **Setup help** (`setup`): sign-in, API tokens, organizations, and error fixes.
 
 ## Prerequisites
 
 - Claude Code with plugin support (`/plugin` works).
 - Node.js 22 or newer (`node -v`) with `npx` on your `PATH`.
 - A MySpec account.
-- Network access to `auth.myspec.dev` and `app.myspec.dev` (or the dev hosts if you use the dev platform).
+- Network access to `auth.myspec.dev` and `app.myspec.dev`.
 
 ## Installation
 
@@ -55,7 +55,6 @@ Pick one:
 |---|---|---|
 | Browser sign-in (default) | `npx -y @myspec/mcp-server login`. Add `--org <slug>` to pick an organization, or `--paste` on a remote machine without a browser | Your own laptop |
 | API token | Create a token in the MySpec webapp (avatar menu, API tokens), then `export MYSPEC_API_TOKEN=msp_pat_...` in the shell that starts `claude` | CI, containers, shared machines |
-| Dev platform | `npx -y @myspec/mcp-server login --user-auth-url https://dev-auth.myspec.dev`, or set `MYSPEC_USER_AUTH_URL` | Projects on the MySpec dev platform |
 
 Run the login command in a terminal, or inside Claude Code with the `!` prefix. The server starts before you sign in; tools return a login hint until you do, then work without a restart. Credentials are stored in `~/.myspec/`. Never put a token in `.mcp.json` or any file in a repository.
 
@@ -97,12 +96,12 @@ Restart Claude Code after updating. To remove: `/plugin uninstall myspec-mcp@mys
 | Skill | Invoke | Starts when you mention |
 |---|---|---|
 | `setup` | `/myspec-mcp:setup` | "set up MySpec", login or token questions, `Not authenticated`, `missing required claims`, HTTP 401/404 from MySpec |
-| `implement` | `/myspec-mcp:implement` | "implement the next task", resume, `tasks.md`, `requirements.md`, FR/NFR ids, pulling specs, applying a change proposal |
-| `analyze` | `/myspec-mcp:analyze` | "verify the spec", "does the code match the spec", coverage, traceability, drift, milestone checks |
-| `spec-authoring` | `/myspec-mcp:spec-authoring` | writing or updating a spec document, EARS+ acceptance criteria, AR/BR/CR deltas, OpenSpec changes, pushing specs |
-| `reverse-bridge` | `/myspec-mcp:reverse-bridge` | sharing a local repository with a MySpec brownfield session, `reverse_mcp_unavailable` |
+| `implement` | Automatic | "implement the next task", resume, `tasks.md`, `requirements.md`, FR/NFR ids, pulling specs, applying a change proposal |
+| `analyze` | Automatic | "verify the spec", "does the code match the spec", coverage, traceability, drift, milestone checks |
+| `spec-authoring` | Automatic | writing or updating a spec document, EARS+ acceptance criteria, AR/BR/CR deltas, OpenSpec changes, pushing specs |
+| `reverse-bridge` | Automatic | sharing a local repository with a MySpec brownfield session, `reverse_mcp_unavailable` |
 
-You can call a skill by name or just describe the task.
+Only `setup` is a slash command. The other skills start when you describe the task.
 
 ### MCP server
 
@@ -148,9 +147,7 @@ Set these in the shell that starts `claude`:
 | Variable | Purpose |
 |---|---|
 | `MYSPEC_API_TOKEN` | Long-lived API token for unattended use |
-| `MYSPEC_USER_AUTH_URL` | Auth server for a non-production MySpec platform |
 | `MYSPEC_DOWNLOAD_ROOT` | Cache folder for `read_spec_file` (default `~/.myspec`) |
-| `MYSPEC_AI_AGENT_WS_URL` | Override the ai-agent WebSocket URL for the reverse bridge |
 | `MYSPEC_ACCESS_TOKEN` | Static access token for the reverse bridge only; the MCP server rejects it |
 
 `download_spec_file` writes under `.specs/` in the folder Claude Code was started in. Add `.specs/` to your project's `.gitignore`.
@@ -161,10 +158,10 @@ Set these in the shell that starts `claude`:
 |---|---|
 | `myspec` shows as failed in `/mcp` on first use | Check `node -v` is 22 or newer. Run `npx -y @myspec/mcp-server --version` once to fill the npx cache, then restart Claude Code. |
 | `Not authenticated` or "run login" | Run `npx -y @myspec/mcp-server login`, or export `MYSPEC_API_TOKEN`. |
-| `Could not discover endpoints` without `Not authenticated` | MySpec is unreachable: check your network and the `userAuthUrl` in `~/.myspec/settings.json`, then retry. |
+| `Could not discover endpoints` without `Not authenticated` | MySpec is unreachable: check your network, then retry. If it keeps failing, sign in again with `npx -y @myspec/mcp-server login`. |
 | `missing required claims (sub, org)` or `no active organization` | You belong to more than one organization. Run `npx -y @myspec/mcp-server login --org <slug>`. |
-| HTTP 401 while using an API token | The token and platform do not match (for example a dev token against production). Set `MYSPEC_USER_AUTH_URL` to the platform the token came from, or create a token there. |
-| HTTP 404 for a project you can see in the webapp | You are signed in to the other platform (production is the default). Sign in again with the right `--user-auth-url`. |
+| HTTP 401 while using an API token | The token is unknown, revoked, or expired. Create a new one in the MySpec webapp. |
+| HTTP 404 for a project you can see in the webapp | You are signed in to a different organization. Run `npx -y @myspec/mcp-server login --org <slug>` for the organization that owns the project. |
 | `OAuth code exchange failed: HTTP 401` during `login --paste` | The code expired (60 seconds). Sign in again and paste right away. |
 | `Pasted token is missing a state suffix` | Copy the whole `<code>.<state>` value from the page, including the dot. |
 | Error that `oauth_creds.json` is readable by others | Run `chmod 600 ~/.myspec/oauth_creds.json`. |

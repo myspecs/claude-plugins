@@ -83,6 +83,33 @@ After the pull request exists, watch it until it is approved. Read `gh api repos
 Stop after the pull request exists or the branch is pushed. Do not merge.
 ```
 
+## Sections every brief adds when they apply
+
+Place these after the requirements, in this order:
+
+```markdown
+## What already shipped (use it, do not rebuild it)
+<from the registry's contract_notes and merged Factory reports: wire shapes, SDK names, services, migrations, fakes and test helpers the task can reuse>
+
+## Decisions already made (do not re-decide)
+<each owner Clarification that binds the task, verbatim, with its Q number>
+
+## Stop and report
+- If <the fix needs a response-shape change / a new public symbol / a second query / a new dependency / …>, do not implement it. Put `BLOCKED: spec - task <N>: <the question, the options, your recommendation>` in the Factory report and finish the other tasks.
+- Task <N> is a decision task: choose <A or B> and state the choice and the reason on the `- Task <N> decision:` line of the Factory report.
+```
+
+## Multi-task variant (one worker, a chain of tasks, one pull request)
+
+For a chain of tasks that ships as one pull request, change the template as follows and keep everything else:
+
+- First line: `factory <bundle> <PR label>: tasks <N1>, <N2>, … <short summary>` (for example `factory checkout PR 2: tasks 30, 31, 32 floating panel`).
+- Opening paragraph: `Implement tasks <N1>, <N2>, … in this order, on one branch, and open ONE pull request. Do not implement any other task.`
+- Replace the single task section with `## Tasks (in order)`, each task block verbatim, followed by every cited requirement once.
+- Definition of done: one commit per task in order (`feat: task <N> <title> (<ids>)`, or `test:`/`chore:`/`docs:` as fits); tests for every acceptance criterion of every task. Pull request title: `task <N1>, <N2>, …: <summary> (<bundle> <PR label>)`.
+- Factory report: `- Task: <N1>,<N2>,<N3>` and one `- Task <N> …:` line for each decision task or blocked task.
+- Blocked rule — pick one and say it: for a dependency chain, "a task you cannot finish blocks the ones after it: commit the tasks before it, then report `BLOCKED:` naming that task"; for independent follow-ups, "a task you cannot finish blocks only itself: commit the others and report `BLOCKED:` naming that task".
+
 ## Lane variant
 
 For a lane of a manager-planned `tasks.md` (`## Branch Plan`), change the template as follows and keep everything else:

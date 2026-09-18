@@ -1,6 +1,7 @@
 ---
 name: analyze
 description: Read-only verification of a MySpec specification bundle. Use when the user asks to analyze, verify, audit, review, or check a spec bundle for consistency; wants requirement-to-task coverage or traceability; asks whether the code matches the spec, what is missing or drifted, or "are we converged"; or before starting implementation and at milestone checkpoints. Reports findings with severities and never edits anything unless the user approves a remediation. Requires the myspec MCP server (see the setup skill).
+user-invocable: false
 ---
 
 # Analyze a MySpec bundle

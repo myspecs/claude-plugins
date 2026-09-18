@@ -1,6 +1,7 @@
 ---
 name: implement
 description: Implement software from a MySpec specification bundle using Spec Driven Development. Use when the user asks to implement, build, continue, resume, or "work on the next task" from a MySpec project; mentions tasks.md, requirements.md, solution.md, constitution.md, FR-xxx or NFR-xxx ids, milestones, acceptance criteria, or "mark the task done"; wants to pull, download, sync, or read spec files from MySpec; or wants to apply a MySpec change proposal or an OpenSpec change to the current repo. Requires the myspec MCP server (see the setup skill when tools are missing or return login errors).
+user-invocable: false
 ---
 
 # Implement from MySpec specs

@@ -39,6 +39,27 @@ Every worker session the manager starts is recorded in a local registry so the m
 - `autofix`: `on` once the worker (or the manager) enabled Auto-fix for the pull request, `unavailable` with the reason in `notes`, `unknown` before a pull request exists.
 - Append a new entry on redispatch rather than overwriting; set the old entry's status to `redispatched`.
 
+## Run policy and contract notes
+
+The run-start answers live under a top-level `policy` key; `dispatch` and `integrate` read them instead of asking again. `contract_notes` collects what merged work provides for later briefs.
+
+```json
+"policy": {
+  "concurrency": 3,
+  "merge_method": "squash",
+  "autonomy": "merge-on-gate",
+  "cloud_dispatch": "allowed",
+  "reviewer": "0xgosu-bot",
+  "required_checks": ["Lint", "Test & Coverage"]
+},
+"contract_notes": {
+  "<short key>": "<exact fact: wire shape, service name, SDK export, migration name, fake-client option>"
+}
+```
+
+- `autonomy`: `ask-each` (ask before every merge and dispatch), `merge-on-gate` (merge on the ready-to-merge gate without asking; ask before dispatch), `full` (also dispatch dependent waves, lanes and planned PR splits inside the current milestone without asking; a new milestone always waits for the milestone gate's question). Update it when the user changes the level mid-run.
+- Each session entry also carries `verified_sha`: the head the manager's last verification pass covered. `integrate`'s ready-to-merge gate compares it with the pull request's head.
+
 ## Stream token (never the URL)
 
 The watch skill records the feed it opened under a top-level `stream` key. The URL is never stored anywhere; only the id needed to revoke and the cursor needed to resume.

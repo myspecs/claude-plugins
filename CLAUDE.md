@@ -53,7 +53,7 @@ description: What the skill does and the phrases or errors that should trigger i
 ---
 ```
 
-Skill names are lowercase with hyphens and do not repeat the plugin name (they surface as `/<plugin>:<skill>`). Descriptions must be specific about triggers. Put long tables and verbatim formats in `references/` and link them from SKILL.md.
+Skill names are lowercase with hyphens and do not repeat the plugin name. Only each plugin's `setup` skill is a slash command (`/<plugin>:setup`, `user-invocable: true`); every other skill sets `user-invocable: false` in its frontmatter and is started by Claude from its description, so descriptions must name the phrases and errors that should trigger it. Set the key explicitly in every new skill. Descriptions must be specific about triggers. Put long tables and verbatim formats in `references/` and link them from SKILL.md.
 
 ## MCP server integration
 
@@ -69,8 +69,9 @@ Skill names are lowercase with hyphens and do not repeat the plugin name (they s
 ## MySpec facts
 
 - npm package `@myspec/mcp-server`, bin `myspec-mcp`. `latest` is the stable release; `next` is a prerelease from every merge to main. Requires Node 22+.
-- CLI: `serve` (default), `login [--org <slug>] [--paste] [--user-auth-url <url>]`, `logout`, `reverse --root <dir>`, `--version`.
-- Environment: `MYSPEC_API_TOKEN` (0.3.0+), `MYSPEC_USER_AUTH_URL`, `MYSPEC_DOWNLOAD_ROOT`, `MYSPEC_AI_AGENT_WS_URL`, `MYSPEC_ACCESS_TOKEN` (`reverse` only).
+- Skills and READMEs target the production MySpec platform only (`auth.myspec.dev`, `app.myspec.dev`). Do not document dev or staging environments, `--user-auth-url`, or `MYSPEC_USER_AUTH_URL` in any skill, reference or README.
+- CLI: `serve` (default), `login [--org <slug>] [--paste]`, `logout`, `reverse --root <dir>`, `--version`.
+- Environment: `MYSPEC_API_TOKEN` (0.3.0+), `MYSPEC_DOWNLOAD_ROOT`, `MYSPEC_ACCESS_TOKEN` (`reverse` only).
 - State: `~/.myspec/settings.json` (non-secret), `~/.myspec/oauth_creds.json` (mode 0600).
 - Spec file paths on the platform are rooted at `specs/` or `openspec/` with at most three directory levels below the root. `download_spec_file` mirrors them under `.specs/` locally.
 - `update_spec_file` takes `expected_version` (the `content_version` from the read the body was based on).
@@ -113,6 +114,9 @@ The platform emits `- [ ]` and never parses checkboxes, so these are plugin conv
 
 - The output style is never `force-for-plugin`; users opt in (see `README.md`). Skills and settings refer to it as `myspec-factory:Software Factory Manager`, because plugin styles resolve as `<plugin>:<style name>` and the bare name does not resolve.
 - Merging is decided by the manager under the agreed policy or by the user; auto-merge is never enabled (`gh pr merge --auto`, GitHub's auto-merge toggle, merge queues). Per-pull-request Auto-fix is expected and never merges.
+- The run `policy` (concurrency, merge method, autonomy level `ask-each` / `merge-on-gate` / `full`, cloud allowed, reviewer) is asked once with `AskUserQuestion` and stored in `.specs/<bundle>/factory-sessions.json`; skills read it instead of asking again. The ready-to-merge gate (integrate §3) is the same at every level and requires the reviewer's approval on the pull request's CURRENT head.
+- Every question to the user goes through `AskUserQuestion`. Watch restarts, reconnects and unchanged polls are not reported to the user.
+- Pull-request and post-merge watches use the tested scripts in `skills/watch/scripts/` (`pr-watch.sh`, `postmerge-watch.sh`); skills must not describe hand-written monitor loops. A script prints `github-unreachable` when a GitHub call fails, and skills treat that as unknown state, never as "nothing there". Test script changes against a real repository before committing (`bash -n`, then a run against a merged pull request and a finished merge commit).
 - No dispatch until the spec gate passes: the whole bundle is complete, `myspec-mcp:analyze` (spec consistency) has no CRITICAL or HIGH finding, and every doubt is clarified with the user. A mid-run spec change or a `BLOCKED: spec` report pauses all dispatch until the gate passes again.
 - The manager is the only writer of `tasks.md`; workers report through pull requests (`factory/<bundle>/task-<N>` branches, `task N:` titles, a `## Factory report` in the body).
 - A brownfield bundle may have no `tasks.md`. The manager then writes one after the rest of the bundle passes the spec gate, grouped into lanes that run in parallel (one worker, one `factory/<bundle>/lane-<L>` branch, one `lane L:` pull request each). Parallelism is not mandatory: a small change is one lane; only a large change with independent parts gets 2-3 lanes (disjoint paths, no cross-lane dependencies, shared contracts written in full in both lanes), recorded in `## Branch Plan`, and uploads it only after the user approves. Bundles that ship their own `tasks.md` keep wave planning.

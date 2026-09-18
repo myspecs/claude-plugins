@@ -1,6 +1,7 @@
 ---
 name: spec-authoring
 description: Write, edit, review, or push Spec Driven Development documents in the MySpec platform's exact formats. Use when the user asks to create or update a constitution, requirements, solution, tasks, or proposal document for MySpec; mentions EARS or EARS+ acceptance criteria ("WHEN ... THEN ... SHALL"), FR/NFR ids, a brownfield change proposal, a requirements delta (AR/BR/CR), or an OpenSpec change or delta spec; or wants local spec files uploaded or synced to a MySpec project. Requires the myspec MCP server for pushing (see the setup skill).
+user-invocable: false
 ---
 
 # Author specs in MySpec formats

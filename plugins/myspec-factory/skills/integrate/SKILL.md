@@ -1,11 +1,14 @@
 ---
 name: integrate
 description: Collect factory worker pull requests, verify them against the task's acceptance criteria and the constitution, merge per the agreed policy, mark the task done on MySpec, and run the milestone gate. Use when the user says "integrate the wave", "merge the factory PRs", "what did the workers deliver", "mark task N done", or after every dispatched session in a wave has reported.
+user-invocable: false
 ---
 
 # Factory integrate
 
-Tools are called as `mcp__plugin_myspec-mcp_myspec__<tool>`. This skill runs per pull request, not per wave: whenever the `watch` skill reports a worker's `factory-<bundle>-task-<N>-report.md` attachment, a pull-request monitor line shows a pull request approved and green, or on request. Start by reading `.specs/<bundle>/factory-sessions.json` (the session registry written by `dispatch`) to know which sessions and branches belong to this wave. Inputs: the wave's tasks and their pull requests, the merge policy the user agreed to at run start (squash or merge commit; whether green pull requests may be merged without asking inside a milestone; required checks), and the `content_version` of `tasks.md`. Writes to `tasks.md` follow the write-back protocol in the `myspec-mcp:implement` skill; the manager is the only writer.
+Tools are called as `mcp__plugin_myspec-mcp_myspec__<tool>`. This skill runs per pull request, not per wave: whenever the `watch` skill reports a worker's `factory-<bundle>-task-<N>-report.md` attachment, a pull-request monitor line shows a pull request approved and green, or on request. Start by reading `.specs/<bundle>/factory-sessions.json` (the session registry written by `dispatch`) to know which sessions and branches belong to this wave. Inputs: the wave's tasks and their pull requests, the `policy` the user agreed to at run start (merge method, autonomy level `ask-each` / `merge-on-gate` / `full`, required checks and reviewer), and the `content_version` of `tasks.md`. Writes to `tasks.md` follow the write-back protocol in the `myspec-mcp:implement` skill; the manager is the only writer.
+
+The watch scripts live in the `watch` skill: `<plugin root>/skills/watch/scripts/`, where the plugin root is two directories above this skill's base directory.
 
 ## 1. Collect
 
@@ -20,7 +23,8 @@ Cloud workers may have pushed a branch without a pull request: `git fetch --prun
    Delegate this to a read-only subagent: ask it to verify acceptance criteria based on code analysis alone, never running tests, builds, or the project. The subagent should read the implementation code and test files to return a criterion-by-criterion table with `file:line` or test-name evidence. For each criterion, the subagent must analyze the test code to determine whether the test would actually fail if the implementation were reverted or broken — contract tests that only check one direction, or assert on objects the test builds itself, give false confidence.
    For high-risk criteria (authorization defaults, concurrency, ordering, what is published before commit), the subagent must READ THE IMPLEMENTATION CODE directly to verify the behavior matches the requirement, not just confirm a test exists.
    When several branches build against one contract, compare them directly — the producer's payloads, service names and response wrappers against the consumer's structs and client code, field by field. Neither branch's CI can see a mismatch between them.
-   After a worker pushes fixes, re-verify only the fix commits (`git diff <verified-sha>..<head>`), item by item, with evidence and whether each test would fail on revert. A fix that is only partial goes straight back with the remaining gap.
+   After a worker pushes fixes, re-verify only the fix commits (`git diff <verified-sha>..<head>`), item by item, with evidence and whether each test would fail on revert. A fix that is only partial goes straight back with the remaining gap. A fix round also re-scans the WHOLE fix diff for production changes nobody asked for — a refactor, a moved component, a new portal or listener — and verifies each one as carefully as the original diff; unrequested changes made while fixing are where new regressions come from. Record the verified head sha in the registry entry (`verified_sha`) after every pass.
+   Give every verification subagent the weakness checklist in `references/verification-checklist.md` and tell it to go through it for each new or changed test. Tell it to work in priority order (the production changes and high-risk criteria first, then test integrity, then scope) and to hand back a partial report with evidence rather than nothing if it runs long. A verification subagent that makes no progress for ten minutes, or is stopped by the stream watchdog, is discarded and relaunched once on the current head with the same prompt; never merge on the missing report.
 3. Constitution: the diff introduces no forbidden technology, pattern, or security violation. Delegate a read-only diff review to a subagent when the diff is large; ask it to report gaps against the acceptance criteria and constitution, not style.
 4. Scope: the diff touches only the modules and files the task named plus tests. Unrelated changes are reported back and the pull request is not merged until the worker removes them. For a lane, the diff also stays inside the lane's `Owns` list; any path from another lane is a finding, and each shared contract is compared field by field with the other lanes' branches.
 5. Spec issues raised in the report (`BLOCKED: spec`, deviations): stop this lane, put the question to the user, and after the answer record it as `- Clarification:` under the task in `tasks.md` (or `## Clarifications` in `requirements.md` for requirement-level answers) before redispatching.
@@ -30,9 +34,20 @@ Cloud workers may have pushed a branch without a pull request: `git fetch --prun
 
 ## 3. Merge per policy
 
-- Merge with `gh pr merge <n> --squash` or `--merge` as agreed, never `--admin`, never `--auto`, never a force push. Auto-merge is out of bounds in every form — the `--auto` flag, GitHub's auto-merge toggle, and merge queues — because a merge must be decided by the manager under the agreed policy or by the user, at the moment the evidence is in front of them. If a pull request arrives with auto-merge already enabled, turn it off before verifying and say so. If the policy requires the user's approval for each merge, present the verified list and wait.
+**Ready-to-merge gate.** Re-check every item immediately before `gh pr merge`, from one fresh `gh pr view <n> --json headRefOid,mergeStateStatus,reviewDecision,reviews,statusCheckRollup,autoMergeRequest` plus the review-thread query:
+
+1. The gating reviewer's latest approval is on the **current head** commit (`reviews[].commit.oid` == `headRefOid`). An approval on an earlier commit does not count, even when GitHub still shows `reviewDecision: APPROVED`.
+2. Every required check is `SUCCESS` (or `SKIPPED`/`NEUTRAL`) on that head; nothing pending.
+3. No unresolved review threads (`gh api graphql` on `reviewThreads { isResolved }`).
+4. `mergeStateStatus` is `CLEAN` and `autoMergeRequest` is null.
+5. Your own verification covers every change up to that head: the registry's `verified_sha` is the head, or the only commits after it touch docs or comments (check with `git diff --stat <verified_sha>..<head>`). Commits that touch tests get a pass with `references/verification-checklist.md` first (a test-only commit can drop an assertion or weaken a check), and anything touching production code gets a full re-verification.
+6. No open spec question, deviation or `BLOCKED:` line on the pull request.
+
+Whenever a worker pushes after an approval, request the review again at once (`gh pr edit <n> --add-reviewer <reviewer>`, then confirm `reviewRequests` lists it) instead of waiting for the worker to do it. When all six hold: at `merge-on-gate` or `full`, merge without asking and report it; at `ask-each`, present the evidence and ask with `AskUserQuestion`.
+
+- Merge with `gh pr merge <n> --squash` or `--merge` as agreed, never `--admin`, never `--auto`, never a force push. Auto-merge is out of bounds in every form — the `--auto` flag, GitHub's auto-merge toggle, and merge queues — because a merge must be decided by the manager under the agreed policy or by the user, at the moment the evidence is in front of them. If a pull request arrives with auto-merge already enabled, turn it off before verifying and say so.
 - Absent branch protection (`gh api repos/{owner}/{repo}/branches/<base>/protection` returns 404) nothing stops a merge; that is a reason to hold to the agreed policy, not to skip it. Say when the base is unprotected, since then a green `reviewDecision` is the only gate.
-- **Merge one pull request at a time, and wait for its post-merge CI/CD to finish before merging the next.** Never merge several pull requests back to back, even when all are approved and green. Push workflows on the default branch build and deploy per merge commit; runs triggered seconds apart race, and a slower run for an OLDER commit can finish last — overwriting a mutable image tag such as `:latest` and redeploying older code over newer code. (Observed: two platform merges 2 s apart left dev running the older commit's image until the newer run was re-run.) After each merge:
+- **Merge one pull request at a time, and wait for its post-merge CI/CD to finish before merging the next.** Never merge several pull requests back to back, even when all are approved and green. Push workflows on the default branch build and deploy per merge commit; runs triggered seconds apart race, and a slower run for an OLDER commit can finish last — overwriting a mutable image tag such as `:latest` and redeploying older code over newer code. (Observed: two platform merges 2 s apart left the deployment running the older commit's image until the newer run was re-run.) After each merge:
   1. Watch `gh run list --branch <base> --json name,status,conclusion,headSha` filtered to that merge commit until every run is `completed`.
   2. Any failure: stop merging, report, and do not merge the next pull request on a red default branch.
   3. Only then re-check the next pull request is still on its approved head and `CLEAN` (it may need a rebase after the previous merge) and merge it.
@@ -46,7 +61,19 @@ For each merged task: `get_spec_file` for the current `content_version`, `read_s
 
 ## 4b. Watch the merge land
 
-A merge to the default branch starts the repository's push workflows. Arm one `Monitor` over `gh run list --branch <base>` filtered to the merge commit, report the outcome per workflow, and say what actually shipped: a published package version and tag, which environments the deploy covers, and which are left to the normal release path. A red post-merge run is reported at once; do not start the next wave until it is understood.
+A merge to the default branch starts the repository's push workflows. Arm one `Monitor` on the tested script rather than writing a loop by hand:
+
+```
+Monitor({
+  command: "<plugin root>/skills/watch/scripts/postmerge-watch.sh <clone> <merge-sha> <base>",
+  description: "post-merge runs on <base> for <merge-sha> (PR #<n>)",
+  timeout_ms: 3600000
+})
+```
+
+It prints one line per change and exits by itself once the same finished set is seen on two polls in a row: `post-merge-complete` with exit 0 when every run succeeded (or was skipped), exit 1 with a `failed:` line when any run failed, and exit 3 (`post-merge-watch-timeout`) after 60 polls — which is also where a merge that triggers no push workflow ends, after `no runs yet`. A `github-unreachable` or `no runs yet` line is not a result — check `gh run list` directly before saying anything. The Monitor window ends before the script does; re-arm it on expiry. The script sees only runs whose head is the merge commit: a deploy chained with `workflow_run` after another workflow may not carry that head, so check such deploys with `gh run list` when the repository has them. Report the outcome per workflow and say what actually shipped: a published package version and tag, which environments the deploy covers, and which are left to the normal release path. A red post-merge run is reported at once; do not start the next wave until it is understood.
+
+At `full` autonomy, when this merge was the last thing the next wave or lane of the SAME milestone was waiting for (including a planned split such as "PR 2 after PR 1 is merged and deployed") and every run is green, hand over to `dispatch` for it straight away and report the dispatch together with the deploy result. Work in a later milestone never starts this way; it waits for the milestone gate's question (§6).
 
 ## 4c. Reconcile the spec with what shipped
 
@@ -56,6 +83,17 @@ When a bundle's last pull request merges, the spec should describe the code that
 - Strikethrough belongs to `CR-` entries only. Correcting an `AR-` is a plain edit.
 - Add a trailing `## Clarifications` section for decisions (why a transport differs, why a value is copied rather than imported) and a `## Known Gaps` section for what was accepted at merge and needs a follow-up change. Both are plugin conventions the platform tolerates; no metadata footer.
 - A gap that needs code is a follow-up task, not a weakened requirement. Say which option you took.
+- Heading and numbering rules for `tasks.md`: never renumber an existing task or milestone heading, and never create two headings with the same milestone number and text. Follow-up work goes into a NEW `## Milestone <next number>: Convergence` section placed just before `## Dependency Graph`, with task numbers continuing after the highest existing task. A misplaced older convergence record keeps its original milestone number and gets a distinct heading (for example `## Milestone 4: Convergence record (checked at <sha>)`) when it is moved above the dependency graph. After adding tasks, update every overview count the file states (task and milestone totals, complexity totals, the mermaid graph, the branch table, the dependency-graph prose, any "every id appears" claim).
+
+**Draft with a subagent, write it yourself.** Large document edits (reconciliation, new clarifications, follow-up tasks) go to one drafting subagent that edits working copies under `.specs/<bundle>/draft/` only — never MySpec, never the repository. Copy the current platform revisions into `draft/` first. Give it the decisions, the evidence (file:line), and the rules above, and require these self-checks in its reply:
+
+1. Every `### (AR|BR|CR)-…` heading is cited by at least one task's `_Requirements:_`, and every cited id exists as a heading (report the deliberate exceptions, such as struck entries still cited by shipped tasks).
+2. Every `_Dependencies:_` number exists; no cycles.
+3. No checkbox of an existing task changed, and no existing task was renumbered (diff the task lines against the platform copy).
+4. No `TBD`, `TODO` or placeholder text.
+5. The judgement calls it made, listed separately, so you can put any that change behaviour to the user.
+
+Re-run checks 1-3 yourself on the drafts before writing, then write each file with `update_spec_file` and `expected_version` from a `get_spec_file` made just before, in dependency order (proposal, then requirements, then tasks), and expect each write's `spec_file.updated` echo on the feed.
 
 ## 5. Board and log
 
@@ -65,8 +103,11 @@ Update each registry entry (`pr`, `status`: `pr-open`, `merged`, `blocked`, `fai
 
 When the last task of a `## Milestone` is `[x]` (for a `tasks.md` with a `## Branch Plan`, lanes span every milestone and run at once, so run this gate once, after the last lane's pull request merges, over all milestones):
 
-1. Run the full test suite on the default branch (or ask the user to, when it needs infrastructure).
-2. Run the `myspec-mcp:analyze` skill in convergence mode for the milestone's requirement ids; report coverage and any missing, partial, contradicting, or unrequested items.
-3. Summarise the milestone: tasks merged, requirement ids satisfied, spec edits made, open questions, cost.
-4. Offer to write the summary to `.specs/<bundle>/milestone-<M>.md` and `upload_attachment` it (absolute `file_path`) to the MySpec project.
-5. Stop. Do not plan or dispatch the next milestone until the user says so.
+Do the whole gate in one pass, in parallel where the steps are independent, and ask the user once at the end:
+
+1. Run the full test suite on the default branch through a test-runner subagent (or ask the user to, when it needs infrastructure). Launch it together with step 2.
+2. Run the `myspec-mcp:analyze` skill in convergence mode for the milestone's requirement ids, through a read-only subagent; report coverage and any missing, partial, contradicting, or unrequested items, and whether every recorded Clarification matches the shipped code.
+3. Write the summary to `.specs/<bundle>/milestone-<M>.md` (tasks merged with PRs and merge shas, requirement ids satisfied, spec decisions taken, verification findings fixed before merge, convergence result, open items, cost) and upload it with `upload_attachment` (absolute `file_path`, `file_name` `factory-<bundle>-milestone-<M>.md`, `override: true`). Uploading a summary is not a spec change and needs no question.
+4. Draft (with the drafting subagent in §4c, into `draft/` only) the document reconciliation for every accepted deviation and a new `## Milestone <next>: Convergence` section with one small task per open item that needs code, each depending only on the last task of this milestone so they can run in any order.
+5. Ask ONE `AskUserQuestion` call covering what needs the user: whether to write the reconciliation to MySpec, and whether to dispatch the follow-up tasks (at `full`, dispatching them is the recommended option; at the other levels, ask). Then act on the answers without further questions.
+6. When nothing is left in flight, revoke the stream token and stop every Monitor; mint a fresh one when work resumes. Do not keep re-arming watches over an idle factory.

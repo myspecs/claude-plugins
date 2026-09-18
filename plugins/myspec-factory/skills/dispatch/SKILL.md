@@ -1,11 +1,12 @@
 ---
 name: dispatch
 description: Spawn one Claude Code worker session per ready factory task (or per lane of a manager-planned tasks.md) with a self-contained brief. Use when the user says "dispatch the wave", "start the workers", "spawn sessions for these tasks", "run task N in the cloud", "start the lanes", or after the plan skill has produced a wave or lanes. Cloud sessions first (claude --cloud or a remote subagent), local git worktree sessions as fallback. Never implements a task in the manager session.
+user-invocable: false
 ---
 
 # Factory dispatch
 
-Inputs: an approved wave from the `plan` skill, the concurrency cap, and the user's agreement to spawn sessions (asked once per run). Brief template: `references/worker-brief.md`. Mechanics per path: `references/cloud-vs-local.md`. Session bookkeeping: `references/session-registry.md`.
+Inputs: an approved wave from the `plan` skill, and the run `policy` in `.specs/<bundle>/factory-sessions.json` (concurrency cap, cloud allowed, autonomy level). At `ask-each` and `merge-on-gate`, confirm each wave with one `AskUserQuestion` before starting sessions; at `full`, dispatch without asking and report what you started. Brief template: `references/worker-brief.md`. Mechanics per path: `references/cloud-vs-local.md`. Session bookkeeping: `references/session-registry.md`. Watch scripts: `<plugin root>/skills/watch/scripts/`, where the plugin root is two directories above this skill's base directory.
 
 ## 1. Build one brief per task
 
@@ -15,8 +16,14 @@ Brief checks that have cost a review round when skipped:
 - Include every requirement id the acceptance criteria or implementation notes reference, not only the `_Requirements:_` line — a missing priority or ordering rule sends the worker to guess.
 - List the test, lint and typecheck commands of every project the task may touch, taken from that project's pull-request workflow.
 - State the production rule: nothing fake, stubbed, or half-wired may become reachable in a production build. A consumer built ahead of its provider stays hidden or inert until the integration task wires it.
-- Paste the contract notes other workers already produced (response shapes, event fields, service names, encodings) into later briefs.
+- Build a `## What already shipped (use it, do not rebuild it)` section from the registry's `contract_notes` and the `Notes for the manager` of every merged Factory report in this bundle: wire shapes, new SDK names, service and subject names, migrations, test helpers and fakes the task can reuse. Do not retype it from memory; read the registry.
 - Name the reviewer whose approval gates the merge (for example the review bot) and tell the worker to request that review as soon as the pull request exists. Workers skip it when the brief only says to re-request review after fixes.
+- Give every decision in the spec a place in the brief: the owner's Clarifications that bind the task, verbatim, under `## Decisions already made (do not re-decide)`.
+- **Decision points.** When a task might need something the spec freezes or the owner has not decided — a response-shape change, a new public API symbol, a second query, a dependency, a migration beyond the one planned — add a `## Stop and report` section naming each such point and the exact condition: "if the fix needs X, do not implement it; report `BLOCKED: spec - <question with the options and your recommendation>` for that task and finish the others". A task marked as a decision in `tasks.md` (keep or change, A or B) states which way the worker must report its choice in the Factory report.
+
+### Multi-task briefs (one worker, several tasks, one pull request)
+
+When a sequential chain of tasks ships as one pull request (a milestone that `tasks.md` assigns to one agent, a PR split such as "PR 1 = tasks 28, 29, 35", or a convergence milestone), write one brief for the whole chain with the multi-task variant in `references/worker-brief.md`: every task verbatim in order, one commit per task, one pull request titled `task <N1>, <N2>, …: <summary>`, and a blocked rule that says whether a stuck task blocks the ones after it (a dependency chain) or only itself (independent follow-ups). Record one registry entry with `task` set to the list, for example `"28,29,35"`.
 
 ### Lane briefs (bundles with a `## Branch Plan`)
 
@@ -50,14 +57,24 @@ For each task, start the session, then immediately, before starting the next one
 1. Capture the session id and URL from the command output (`Created cloud session:`, `Session ID:` and `View:` lines, or `--output-format json`) or the agent id from the tool result, per `references/session-registry.md`. Strip terminal escapes before matching. With Remote Control connected, also run `ListAgents` once the session appears and record its listing name (`agent_name`) — the cloud rewrites the title, so it is rarely the brief's first line verbatim.
 2. Append an entry to `.specs/<bundle>/factory-sessions.json` (task, title, path, session id, URL, expected branch, start time, `status: "running"`). This file is how the manager finds the session again to steer it; a dispatch whose id could not be captured is recorded with `session_id: null` and the user is asked for the URL.
 3. Add a line to the run log `.specs/<bundle>/factory-run.md`.
-4. Arm one `Monitor` for the wave that covers branch, pull request, checks, review decision and terminal states, per the monitoring rules in `references/cloud-vs-local.md`. Re-arm it on expiry until the wave is integrated, and check state directly whenever a watch expires with no events.
+4. Arm one `Monitor` per pull request on the tested script, not a hand-written loop:
+
+   ```
+   Monitor({
+     command: "<plugin root>/skills/watch/scripts/pr-watch.sh <clone> \"task <N>\" --since <started_at>",
+     description: "factory <bundle> task <N> branch, PR, checks and review state",
+     timeout_ms: 3600000
+   })
+   ```
+
+   Use how the pull request title will start (`"task 28"`, `"task 30, 31"`, `"lane 2"`) and the session's `started_at` from the registry. The script snapshots the existing `claude/*` and `factory/*` branches at start so only the worker's new branch shows, prints one line per change, prints `github-unreachable (…)` when a GitHub call fails (the state is unknown, not empty — never report "no branch" or "no PR" from such a line), and exits by itself once the pull request is merged or closed. Re-arm it on expiry without telling the user, and check the state directly whenever it expires with no events.
 5. Confirm Auto-fix is on for each pull request as it appears (the brief asks the worker to enable it). If a worker reports it unavailable, or the pull request was opened by the manager, turn it on with a message to the session — `claude -p "watch PR #<n> and auto-fix CI failures and review comments" --cloud <session_id>` — or `/autofix-pr` from the branch. Record `autofix` in the registry entry. See `references/worker-channels.md` for what Auto-fix does and does not cover.
 
 Post the updated board to the user with the session URLs.
 
 ## 5. Hand over to integrate
 
-Run the `integrate` skill for each pull request as it becomes ready (notification, `claude agents`, or a pull request turning approved and green); do not wait for the whole wave, and merge any ready pull request that depends on no unmerged pull request straight away. Do not start the next wave until every session in this one has merged or reported blocked. A pushed branch is not a finished worker: cloud sessions keep committing after the first push, so wait for the pull request, or for commits to have stopped, before treating the lane as done.
+Run the `integrate` skill for each pull request as it becomes ready (notification, `claude agents`, or a pull request turning approved and green); do not wait for the whole wave, and merge any ready pull request that depends on no unmerged pull request straight away. Do not start the next wave until every session in this one has merged or reported blocked. At `full` autonomy, start it as soon as that holds and the post-merge runs it depends on are green (`integrate` §4b); a split such as "PR 2 after PR 1 is merged and deployed" is dispatched the moment PR 1's deploy turns green. A pushed branch is not a finished worker: cloud sessions keep committing after the first push, so wait for the pull request, or for commits to have stopped, before treating the lane as done.
 
 ## Channels to a running worker
 

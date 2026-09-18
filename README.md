@@ -13,10 +13,10 @@ Connects Claude Code to MySpec. It registers the `@myspec/mcp-server` MCP server
 | Skill | Use it to |
 |---|---|
 | `/myspec-mcp:setup` | Sign in, use an API token, switch organization, fix connection errors |
-| `/myspec-mcp:implement` | Build a spec bundle one task at a time: ask about open points, write tests from acceptance criteria, check the constitution, mark the task done on MySpec |
-| `/myspec-mcp:analyze` | Check a bundle for gaps and conflicts, and check whether the code matches the spec (read-only) |
-| `/myspec-mcp:spec-authoring` | Write or update constitution, requirements, solution, tasks, change proposals, and OpenSpec changes in MySpec's formats, then push them |
-| `/myspec-mcp:reverse-bridge` | Share a local repository with a MySpec brownfield spec session |
+| `implement` | Build a spec bundle one task at a time: ask about open points, write tests from acceptance criteria, check the constitution, mark the task done on MySpec |
+| `analyze` | Check a bundle for gaps and conflicts, and check whether the code matches the spec (read-only) |
+| `spec-authoring` | Write or update constitution, requirements, solution, tasks, change proposals, and OpenSpec changes in MySpec's formats, then push them |
+| `reverse-bridge` | Share a local repository with a MySpec brownfield spec session |
 
 Details: [plugins/myspec-mcp/README.md](plugins/myspec-mcp/README.md).
 
@@ -28,16 +28,16 @@ It ships the **Software Factory Manager** output style and six skills:
 
 | Skill | Use it to |
 |---|---|
-| `/myspec-factory:setup` | Check MySpec and GitHub access, cloud readiness, and repository settings before the first run |
-| `/myspec-factory:watch` | Open the project's live event feed so changes arrive without polling |
-| `/myspec-factory:plan` | Build the board and group ready tasks into waves |
-| `/myspec-factory:dispatch` | Start one worker session per ready task |
-| `/myspec-factory:integrate` | Verify and merge worker pull requests, mark tasks done, run the milestone gate |
-| `/myspec-factory:shift` | Schedule an unattended shift as a cloud routine |
+| `/myspec-factory:setup` | Check MySpec and GitHub access, cloud readiness, and repository settings before the first run; pick a MySpec project and open its event feed |
+| `watch` | Open the project's live event feed so changes arrive without polling |
+| `plan` | Build the board and group ready tasks into waves |
+| `dispatch` | Start one worker session per ready task |
+| `integrate` | Verify and merge worker pull requests, mark tasks done, run the milestone gate |
+| `shift` | Schedule an unattended shift as a cloud routine |
 
 Details: [plugins/myspec-factory/README.md](plugins/myspec-factory/README.md).
 
-Skills also start on their own when you describe the task in plain words, for example "implement the next task from project X" or "run the factory for bundle Y".
+Only the two `setup` skills are slash commands. The other skills start on their own when you describe the task in plain words, for example "implement the next task from project X" or "run the factory for bundle Y".
 
 ## Requirements
 
