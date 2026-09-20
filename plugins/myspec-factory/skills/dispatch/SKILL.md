@@ -6,15 +6,23 @@ user-invocable: false
 
 # Factory dispatch
 
-Inputs: an approved wave from the `plan` skill, and the run `policy` in `.specs/<bundle>/factory-sessions.json` (concurrency cap, cloud allowed, autonomy level). At `ask-each` and `merge-on-gate`, confirm each wave with one `AskUserQuestion` before starting sessions; at `full`, dispatch without asking and report what you started. Brief template: `references/worker-brief.md`. Mechanics per path: `references/cloud-vs-local.md`. Session bookkeeping: `references/session-registry.md`. Watch scripts: `<plugin root>/skills/watch/scripts/`, where the plugin root is two directories above this skill's base directory.
+Inputs: an approved wave from the `plan` skill, and the run `policy` in `.specs/<bundle>/factory-sessions.json` (concurrency cap, cloud allowed, autonomy level). At `ask-each` and `merge-on-gate`, confirm each wave with one `AskUserQuestion` before starting sessions; at `full`, dispatch without asking and report what you started. Brief template: `references/worker-brief.md`. Mechanics per path: `references/cloud-vs-local.md`. Session bookkeeping: `references/session-registry.md`. Scripts: `<plugin root>/skills/dispatch/scripts/` (`build-brief.py`, `registry.py`) and `<plugin root>/skills/watch/scripts/`, where the plugin root is two directories above this skill's base directory.
 
 ## 1. Build one brief per task
 
-A worker starts with zero context. Each brief must contain, inline: repository and default branch; the task block verbatim; every acceptance criterion; the text of each cited FR/NFR (or AR/CR, or OpenSpec requirement and scenarios); the constitution sections that bind the work (Technology, Architecture, Testing, Coding Standards, Security); the solution module excerpts the task touches; the output contract (branch, pull request title and body, `## Factory report`, blocked protocol); and the rule that the worker must not edit `tasks.md` or any spec file. Fill `references/worker-brief.md`; keep the brief under roughly 400 lines by excerpting rather than pasting whole documents (a branch worker owning a long task chain may need more; cut proposal prose before acceptance criteria).
+A worker starts with zero context. Each brief must contain, inline: repository and default branch; the task block verbatim; every acceptance criterion; the text of each cited FR/NFR (or AR/CR, or OpenSpec requirement and scenarios); the constitution sections that bind the work (Technology, Architecture, Testing, Coding Standards, Security); the solution module excerpts the task touches; the output contract (branch, pull request title and body, `## Factory report`, blocked protocol); and the rule that the worker must not edit `tasks.md` or any spec file. Build the verbatim part with the script instead of copying by hand. Download the bundle files first (`download_spec_file`), then run:
+
+```
+python3 <plugin root>/skills/dispatch/scripts/build-brief.py --bundle-dir .specs/<bundle> --tasks 45,46,47 [--requirements <ids>] [--clarifications Q24,Q26] [--out <scratchpad>/brief-<N>.md]
+```
+
+It emits `## Tasks (in order)` (each task block verbatim), `## Requirements these tasks satisfy (verbatim)` (the ids given plus every id the tasks cite), `## Decisions already made` (the named Clarification rows) and, for a greenfield bundle, the Constitution section. Write the rest of the brief around it from `references/worker-brief.md`; keep the brief under roughly 400 lines by excerpting rather than pasting whole documents (a branch worker owning a long task chain may need more; cut proposal prose before acceptance criteria).
 
 Brief checks that have cost a review round when skipped:
 - Include every requirement id the acceptance criteria or implementation notes reference, not only the `_Requirements:_` line — a missing priority or ordering rule sends the worker to guess.
-- List the test, lint and typecheck commands of every project the task may touch, taken from that project's pull-request workflow.
+- List the test, lint and typecheck commands of every project the task may touch, taken from that project's pull-request workflow, together with ALL setup steps of that job, in order: dependency installs of sibling and shared packages, toolchain setup (for example bun). Running only the project's own install makes every test fail at import.
+- Paste the numbered items of `<plugin root>/skills/integrate/references/verification-checklist.md`, except those marked verifier only, into the brief's `## Self-check before the PR` section. The worker runs in the target repository and cannot read the plugin.
+- Keep the template's `## Test rules`, the revert-check step and the `- Revert checks:` report line in every brief; they are what stops review rounds that only fix tests.
 - State the production rule: nothing fake, stubbed, or half-wired may become reachable in a production build. A consumer built ahead of its provider stays hidden or inert until the integration task wires it.
 - Build a `## What already shipped (use it, do not rebuild it)` section from the registry's `contract_notes` and the `Notes for the manager` of every merged Factory report in this bundle: wire shapes, new SDK names, service and subject names, migrations, test helpers and fakes the task can reuse. Do not retype it from memory; read the registry.
 - Name the reviewer whose approval gates the merge (for example the review bot) and tell the worker to request that review as soon as the pull request exists. Workers skip it when the brief only says to re-request review after fixes.
@@ -55,20 +63,20 @@ Never exceed the concurrency cap. Never dispatch two tasks that share files in t
 For each task, start the session, then immediately, before starting the next one:
 
 1. Capture the session id and URL from the command output (`Created cloud session:`, `Session ID:` and `View:` lines, or `--output-format json`) or the agent id from the tool result, per `references/session-registry.md`. Strip terminal escapes before matching. With Remote Control connected, also run `ListAgents` once the session appears and record its listing name (`agent_name`) — the cloud rewrites the title, so it is rarely the brief's first line verbatim.
-2. Append an entry to `.specs/<bundle>/factory-sessions.json` (task, title, path, session id, URL, expected branch, start time, `status: "running"`). This file is how the manager finds the session again to steer it; a dispatch whose id could not be captured is recorded with `session_id: null` and the user is asked for the URL.
-3. Add a line to the run log `.specs/<bundle>/factory-run.md`.
+2. Append an entry to `.specs/<bundle>/factory-sessions.json` with `registry.py … add-session --task --title --path --session-id --url --branch --started-at` (usage in `references/session-registry.md`), never by editing the JSON by hand. This file is how the manager finds the session again to steer it; a dispatch whose id could not be captured is recorded with `session_id: null` and the user is asked for the URL.
+3. Add a line to the run log `.specs/<bundle>/factory-run.md` (`registry.py … log --run-log <path> "<text>"`).
 4. Arm one `Monitor` per pull request on the tested script, not a hand-written loop:
 
    ```
    Monitor({
-     command: "<plugin root>/skills/watch/scripts/pr-watch.sh <clone> \"task <N>\" --since <started_at>",
+     command: "<plugin root>/skills/watch/scripts/pr-watch.sh <clone> \"task <N>\" --since <started_at> --reviewer <policy.reviewer> --rerequest",
      description: "factory <bundle> task <N> branch, PR, checks and review state",
      timeout_ms: 3600000
    })
    ```
 
-   Use how the pull request title will start (`"task 28"`, `"task 30, 31"`, `"lane 2"`) and the session's `started_at` from the registry. The script snapshots the existing `claude/*` and `factory/*` branches at start so only the worker's new branch shows, prints one line per change, prints `github-unreachable (…)` when a GitHub call fails (the state is unknown, not empty — never report "no branch" or "no PR" from such a line), and exits by itself once the pull request is merged or closed. Re-arm it on expiry without telling the user, and check the state directly whenever it expires with no events.
-5. Confirm Auto-fix is on for each pull request as it appears (the brief asks the worker to enable it). If a worker reports it unavailable, or the pull request was opened by the manager, turn it on with a message to the session — `claude -p "watch PR #<n> and auto-fix CI failures and review comments" --cloud <session_id>` — or `/autofix-pr` from the branch. Record `autofix` in the registry entry. See `references/worker-channels.md` for what Auto-fix does and does not cover.
+   Use how the pull request title will start (`"task 28"`, `"task 30, 31"`, `"lane 2"`) and the session's `started_at` from the registry. The script reports `claude/*` and `factory/*` branches whose tip is newer than `--since`, so a re-armed watch still shows the worker's branch; prints one line per change; adds `approved_head=yes|no|none` for the reviewer (the gate is `approved_head=yes`, not `review=APPROVED`); with `--rerequest`, re-requests that reviewer when the head moves and no request is pending (`re-requested review from <login> on <sha>`); prints `github-unreachable (…)` when a GitHub call fails (the state is unknown, not empty — never report "no branch" or "no PR" from such a line), and exits by itself once the pull request is merged or closed. Re-arm it on expiry without telling the user, and check the state directly whenever it expires with no events.
+5. Confirm Auto-fix is on for each pull request as it appears (the brief asks the worker to enable it). If a worker reports it unavailable, or the pull request was opened by the manager, turn it on with a message to the session — `claude -p "watch PR #<n> and auto-fix CI failures and review comments" --cloud <session_id>` — or `/autofix-pr` from the branch. Record it with `registry.py … set --session <task> autofix=on`. See `references/worker-channels.md` for what Auto-fix does and does not cover.
 
 Post the updated board to the user with the session URLs.
 
@@ -82,7 +90,7 @@ Run the `integrate` skill for each pull request as it becomes ready (notificatio
 
 ## Relaying between workers
 
-Read each `## Factory report` and each first push as it lands. When one worker's output fixes something another in-flight worker must match — an internal event payload, a service or subject name, a response wrapper, the unit of an offset, an error `reason` — send that worker the exact facts with `SendMessage` straight away, and record them under `contract_notes` in the registry for later briefs. Couplings found only at integration cost both branches a rework.
+Read each `## Factory report` and each first push as it lands. When one worker's output fixes something another in-flight worker must match — an internal event payload, a service or subject name, a response wrapper, the unit of an offset, an error `reason` — send that worker the exact facts with `SendMessage` straight away, and record them under `contract_notes` for later briefs (`registry.py … contract <key> "<fact>"`). Couplings found only at integration cost both branches a rework.
 
 ## Steering instead of redispatching
 
@@ -91,9 +99,10 @@ For a cloud worker that is still running, prefer one follow-up over a fresh sess
 1. `SendMessage` (needs this session connected to Remote Control): run `ListAgents`, find the worker's row (labelled `cloud`; its name is the session title, which is why every brief starts with the line `factory <bundle> task <N>: <title>` or `factory <bundle> lane <L>: <lane name>`), and send the message to that name (append the `[ref]` only when the listing shows one). Cloud sessions receive messages but cannot message back, so ask the worker to answer through its pull request or branch, not in a reply.
 2. `claude -p "<failing check output or review comment>" --cloud <session_id>` with the id from `.specs/<bundle>/factory-sessions.json`, when Remote Control is not connected or the session has fallen off the bounded listing.
 
-Record the message and the channel in the entry's `notes`. Redispatch only when the session has ended, expired, or reported `BLOCKED`; append a new registry entry and mark the old one `redispatched`.
+Record the message and the channel with `registry.py … note --session <task> "<text>"`. Redispatch only when the session has ended, expired, or reported `BLOCKED`; append a new registry entry and mark the old one `redispatched` (`set --session <index> status=redispatched`).
 
 ## Redispatch rules
 
-- A worker that reports `BLOCKED: spec` (ambiguous or contradictory spec) means the spec gate missed a gap: stop its lane and pause all new dispatch. The manager asks the user, records the answer under the task in `tasks.md` as `- Clarification:`, re-runs the spec gate, then redispatches.
+- A worker that reports `BLOCKED: spec` (ambiguous or contradictory spec) means the spec gate missed a gap: stop its lane and pause all new dispatch. Under `policy.minor_defaults: manager`, a low-impact detail is decided by the manager instead (see `references/session-registry.md`); otherwise the manager asks the user, records the answer under the task in `tasks.md` as `- Clarification:`, re-runs the spec gate, then redispatches.
 - A worker that fails (red checks, no pull request, timeout) is redispatched once with the failure output added to the brief. A second failure stops the lane and is reported. Two consecutive failures across the wave stop dispatching until the user decides.
+- A worker or verifier that finds a confirmed defect in already-merged code follows the reported-defect path in `integrate` §2b: the pinning pull request merges, and the fix is a new task, not a redispatch.

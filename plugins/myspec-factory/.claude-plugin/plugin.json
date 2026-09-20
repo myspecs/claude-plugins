@@ -1,7 +1,7 @@
 {
   "name": "myspec-factory",
   "description": "Turns Claude Code into a Software Factory Manager that runs a MySpec specification bundle to completion: plans dispatch waves from tasks.md, spawns one Claude Code cloud session (or local worktree session) per task, integrates the resulting pull requests, marks tasks done on MySpec, and stops at milestone gates. Listens to the MySpec project event feed through a stream token and Claude Code's Monitor tool. Includes the Software Factory Manager output style and a scheduled factory shift.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": {
     "name": "MySpec Team",
     "email": "0xgosu@gmail.com"

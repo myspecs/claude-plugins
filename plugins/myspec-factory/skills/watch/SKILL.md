@@ -31,7 +31,7 @@ create_stream_token(
 )
 ```
 
-Add `spec_file.lock` only when the user wants it; it fires on every lock renewal while someone edits in the webapp and is the likeliest way to trip the Monitor's firehose suppression. Pass `["*"]` only when the user wants everything. The result carries `id`, `token_prefix`, `expires_at`, and `url`. Record them as `token_id`, `token_prefix`, `expires_at`, plus `last_seq: null`, under `stream` in `.specs/<bundle>/factory-sessions.json` (see the dispatch skill's `session-registry.md`). Do not record `url`.
+Add `spec_file.lock` only when the user wants it; it fires on every lock renewal while someone edits in the webapp and is the likeliest way to trip the Monitor's firehose suppression. Pass `["*"]` only when the user wants everything. The result carries `id`, `token_prefix`, `expires_at`, and `url`. Record them as `token_id`, `token_prefix`, `expires_at`, plus `last_seq: null`, under `stream` in `.specs/<bundle>/factory-sessions.json` with the dispatch skill's `registry.py … stream --token-id --prefix --expires-at` (and `stream-seq N` for `last_seq`; see its `session-registry.md`). Do not record `url`; the script refuses it.
 
 Before minting, `list_spec_file` for the project and cache `file_id` to `file_path` under `files` in the registry (not secret): `spec_file.created` and `spec_file.lock` frames carry no path, so this map is how a frame is tied to a bundle. Refresh it on every `spec_file.created`.
 
@@ -51,14 +51,14 @@ Watch pull requests with the tested scripts in this skill's `scripts/` directory
 
 | Script | Watches | Exits |
 |---|---|---|
-| `pr-watch.sh <clone> "<title prefix>" --since <started_at>` | one worker's new branch, its pull request, failing and pending checks, review decision. The PR is the one whose title starts with the prefix ("task 3" never matches "task 30") created after `--since` (the session's `started_at`), so an older PR with the same title is ignored | when the pull request is merged or closed (exit 0) |
+| `pr-watch.sh <clone> "<title prefix>" --since <started_at> [--reviewer <login>] [--rerequest]` | one worker's branch, its pull request, failing and pending checks, review decision. Branches are the `claude/*` and `factory/*` ones whose tip is newer than `--since`, so a re-armed watch still shows the worker's branch. The PR is the one whose title starts with the prefix ("task 3" never matches "task 30") created after `--since` (the session's `started_at`), so an older PR with the same title is ignored. `--reviewer` adds `approved_head=yes\|no\|none` to the PR line: whether that reviewer's latest approval is on the current head. `--rerequest` (opt-in) re-requests that reviewer when the head moves and no request is pending, and prints `re-requested review from <login> on <sha>`. Pass `--reviewer <policy.reviewer> --rerequest` for worker pull requests | when the pull request is merged or closed (exit 0) |
 | `postmerge-watch.sh <clone> <merge-sha> [base] [interval]` | the default-branch workflow runs of one merge commit | when the same finished set is seen twice: 0 all green, 1 any failure, 3 after 60 polls (also a merge that triggers no workflow) |
 
 Both print one line per change and nothing when the state is the same. Both print `github-unreachable (…)` when a GitHub call fails: that means the state is **unknown**, not empty. Never report "no branch", "no PR" or "no runs" from it — check directly with `git ls-remote`, `gh pr view` or `gh run list` first.
 
 ## 3. React
 
-Each frame arrives as a notification. Keep `last_seq` from every event frame in the registry. Map the frame to an action with `references/event-handling.md`; the short version:
+Each frame arrives as a notification. Keep `last_seq` from every event frame in the registry (`registry.py … stream-seq N`). Map the frame to an action with `references/event-handling.md`; the short version:
 
 | Frame | Action |
 |---|---|
@@ -78,7 +78,7 @@ Each frame arrives as a notification. Keep `last_seq` from every event frame in 
 
 Session status: with Remote Control connected, `ListAgents` shows each cloud worker as busy or idle; an idle worker whose branch has not appeared is a candidate for a nudge through `SendMessage`.
 
-Pull-request script lines: a new branch means the worker pushed (it may keep pushing; do not treat it as finished); a pull request with `pending=0`, empty `failing=[]` and `review=APPROVED` triggers `integrate` (whose gate still checks that the approval is on the current head); a new `head=` after an approval means the review must be requested again; `done: PR #<n> MERGED` that the manager did not merge itself means a human merged it — verify and mark `[x]`. A `github-unreachable` line triggers a direct check, never a report.
+Pull-request script lines: a new branch means the worker pushed (it may keep pushing; do not treat it as finished); a pull request with `pending=0`, empty `failing=[]` and `approved_head=yes` triggers `integrate`; `review=APPROVED` alone is not the gate, because GitHub keeps it after new pushes; a new `head=` after an approval means the review must be requested again (a `re-requested review from …` line says the script already did); `done: PR #<n> MERGED` that the manager did not merge itself means a human merged it — verify and mark `[x]`. A `github-unreachable` line triggers a direct check, never a report.
 
 ## Keeping the feed alive
 
@@ -105,7 +105,7 @@ A dead feed whose URL you no longer hold cannot be resumed. Mint a replacement w
 
 ## 4. Close
 
-At the end of the run or at a milestone gate: `revoke_stream_token(token_id)`, stop every Monitor of the run (TaskStop), and set `stream.revoked_at` in the registry.
+At the end of the run or at a milestone gate: `revoke_stream_token(token_id)`, stop every Monitor of the run (TaskStop), and set `stream.revoked_at` in the registry (`registry.py … stream --revoked-at`).
 
 ## Polling fallback (no stream tokens)
 

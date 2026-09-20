@@ -50,14 +50,17 @@ The run-start answers live under a top-level `policy` key; `dispatch` and `integ
   "autonomy": "merge-on-gate",
   "cloud_dispatch": "allowed",
   "reviewer": "0xgosu-bot",
-  "required_checks": ["Lint", "Test & Coverage"]
+  "required_checks": ["Lint", "Test & Coverage"],
+  "minor_defaults": "owner"
 },
 "contract_notes": {
   "<short key>": "<exact fact: wire shape, service name, SDK export, migration name, fake-client option>"
 }
 ```
 
-- `autonomy`: `ask-each` (ask before every merge and dispatch), `merge-on-gate` (merge on the ready-to-merge gate without asking; ask before dispatch), `full` (also dispatch dependent waves, lanes and planned PR splits inside the current milestone without asking; a new milestone always waits for the milestone gate's question). Update it when the user changes the level mid-run.
+- `autonomy`: `ask-each` (ask before every merge and dispatch), `merge-on-gate` (merge on the ready-to-merge gate without asking; ask before dispatch), `full` (also dispatch dependent waves, lanes and planned PR splits inside the current milestone without asking; a new milestone always waits for the milestone gate's question). Update it when the user changes the level mid-run. At `full`, the milestone gate may also dispatch convergence follow-ups without asking when every one of them is test-only (`integrate` §6).
+- `reviewer`: the bare GitHub login whose approval gates the merge (it is passed to `pr-watch.sh --reviewer`). Keep any explanation elsewhere, for example in `contract_notes`.
+- `minor_defaults`: `owner` (default: every doubt and worker deviation goes to the owner) or `manager`. With `manager`, the manager decides doubts and deviations that are low-impact UX or implementation details — wording and labels, ordering and tie-break rules, counting conventions, test-only choices — and change no API or wire shape, data model, security or authorization, requirement scope, or user-visible flow. It records each as a numbered Clarification marked `(manager default, owner may reverse)`, relays it to the worker, and lists them in the next report and in the milestone summary. Anything else still goes to the owner.
 - Each session entry also carries `verified_sha`: the head the manager's last verification pass covered. `integrate`'s ready-to-merge gate compares it with the pull request's head.
 
 ## Stream token (never the URL)
@@ -115,21 +118,29 @@ SESSION_URL=$(grep -oE 'https://claude\.ai/code/[A-Za-z0-9_]+' <output> | head -
 
 When `--output-format json` is accepted, read `session_id` and `url` from the JSON instead. If neither yields an id, set `session_id` to `null`, keep `status: "running"`, and ask the user to paste the session URL from claude.ai/code; update the entry when they do.
 
-Write the registry immediately after each successful dispatch, before starting the next session. Update it with a small script rather than rewriting by hand, for example:
+Write the registry immediately after each successful dispatch, before starting the next session.
 
-```bash
-python3 - "$REG" <<'PY'
-import json, sys, datetime
-p = sys.argv[1]; d = json.load(open(p))
-d["sessions"].append({"task": 4, "title": "Checkout API", "path": "cloud-cli",
-  "session_id": "session_01DiUkqY2kzbUbDmW1w96rfi",
-  "url": "https://claude.ai/code/session_01DiUkqY2kzbUbDmW1w96rfi",
-  "branch": "factory/<bundle>/task-4",
-  "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-  "status": "running", "pr": None, "notes": ""})
-json.dump(d, open(p, "w"), indent=2)
-PY
+## Writing the registry
+
+Every write goes through `<plugin root>/skills/dispatch/scripts/registry.py`, never an ad-hoc JSON edit. `registry.py …` elsewhere in the skills stands for:
+
 ```
+python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>/factory-sessions.json <subcommand>
+```
+
+| Subcommand | Does |
+|---|---|
+| `show` | Print the registry |
+| `add-session --task --title --path --session-id --url --branch --started-at [--notes]` | Append a session entry with `status: running` |
+| `set --session <index, last or task> key=value…` | Update `status`, `pr`, `branch`, `autofix`, `verified_sha`, `agent_name` or `cloud_title` |
+| `note --session <index, last or task> "text"` | Append to the entry's `notes` |
+| `stream --token-id --prefix --expires-at [--revoked-at]` | Record the stream token (never the URL) |
+| `stream-seq N` | Record `stream.last_seq` |
+| `policy key=value…` | Set run policy keys |
+| `contract <key> "text"` | Add or replace a `contract_notes` entry |
+| `log --run-log <path> "text"` | Append one line to the run log |
+
+It refuses any value that contains a stream URL.
 
 ## Using the registry
 
