@@ -1,15 +1,15 @@
 # myspec-factory
 
-Turns Claude Code into a **Software Factory Manager**: a manager that runs a MySpec spec bundle to completion. It starts one Claude Code worker session per task, checks and merges the pull requests they open, marks tasks done on MySpec, and stops at each milestone for your review.
+Turns Claude Code into a **Software Factory Manager**: a manager that runs a MySpec spec bundle to completion. It groups related tasks and starts one Claude Code worker session per group, checks and merges the pull requests they open, marks tasks done on MySpec, and stops at each milestone for your review.
 
 ## Overview
 
 [MySpec](https://myspec.dev) produces a spec bundle (constitution, requirements, solution, tasks). The `myspec-mcp` plugin lets one Claude Code session build it task by task. This plugin adds the layer above that. The manager never writes feature code. It:
 
-1. Plans waves of tasks that can run in parallel without touching the same code, or, for a brownfield bundle without `tasks.md`, writes the task list itself: one worker for a small change, up to 3 parallel workers for a large one.
-2. Starts one worker session per task: a Claude Code cloud session when available, a local git worktree session otherwise.
-3. Checks each pull request against the task's acceptance criteria and the constitution.
-4. Merges under the policy you agree on, marks the task done on MySpec, and moves to the next wave.
+1. Groups related tasks (a chain of dependent tasks, tasks that touch the same code, tasks for the same requirement) so one worker does them all, and plans waves of groups that run in parallel, or, for a brownfield bundle without `tasks.md`, writes the task list itself: one worker for a small change, up to 3 parallel workers for a large one.
+2. Starts one worker session per group: a Claude Code cloud session, or a local git worktree session only when the cloud is not allowed or not available. A worker gets a single task only when nothing relates to it.
+3. Checks each pull request against its tasks' acceptance criteria and the constitution.
+4. Merges under the policy you agree on, marks its tasks done on MySpec, and moves to the next wave.
 5. Stops at the end of each milestone for your review.
 
 It can also run unattended shifts on a schedule.
@@ -18,8 +18,8 @@ It can also run unattended shifts on a schedule.
 
 - **Software Factory Manager output style**: a clear role with hard limits (no work starts on an unfinished spec, no coding, no marking tasks done without checking, no force pushes, no auto-merge), the run loop, milestone gates, and a cost estimate before every wave.
 - **Task planning for brownfield changes**: when a bundle has no `tasks.md`, the manager writes one. A small change goes to a single worker; a large change with independent parts is split into 2–3 lanes that run in parallel (one worker, one branch, one pull request each). You approve it before it is uploaded to MySpec.
-- **Wave planning** from task dependencies and solution modules. The board comes from MySpec checkboxes and open pull requests, so it is never out of date.
-- **Dispatch** with self-contained worker briefs: the task, its acceptance criteria, the requirements and constitution sections it depends on, and what the pull request must contain.
+- **Wave planning** from task dependencies and solution modules: related tasks go to one worker, one branch and one pull request, which saves setup and review rounds and avoids conflicts between branches. The board comes from MySpec checkboxes and open pull requests, so it is never out of date.
+- **Dispatch** with self-contained worker briefs: the tasks, their acceptance criteria, the requirements and constitution sections it depends on, and what the pull request must contain.
 - **Integration**: required checks, a test for each acceptance criterion, a constitution and scope review, a merge under the agreed policy, then `[x]` written to MySpec.
 - **Live event feed**: changes to `tasks.md` and other spec files, worker reports, and finished spec sessions arrive as notifications instead of polling.
 - **Scheduled shifts**: a cloud routine that integrates, marks tasks done, and dispatches the next wave on a schedule.
@@ -132,8 +132,8 @@ Restart Claude Code after updating. To remove: `/plugin uninstall myspec-factory
 |---|---|---|
 | `setup` | `/myspec-factory:setup` | Check MySpec and GitHub access and cloud readiness; propose repository settings so workers load `myspec-mcp`; pick a MySpec project and open its event feed |
 | `watch` | Used by the manager | Open the project's live event feed and react to each event; polls when the feed is not available |
-| `plan` | Used by the manager | Build the board and group ready tasks into waves; write `tasks.md` when a brownfield bundle has none, as one lane or up to 3 parallel lanes by size |
-| `dispatch` | Used by the manager | Start one worker per ready task; cloud first, local worktree as fallback |
+| `plan` | Used by the manager | Build the board, group related tasks into one worker each, and plan waves of groups; write `tasks.md` when a brownfield bundle has none, as one lane or up to 3 parallel lanes by size |
+| `dispatch` | Used by the manager | Start one worker per group of related tasks; cloud first, local worktree as fallback |
 | `integrate` | Used by the manager | Verify and merge worker pull requests, mark tasks done on MySpec, run the milestone gate |
 | `shift` | Used by the manager | Draft and create a scheduled cloud routine for one unattended shift |
 
@@ -144,8 +144,8 @@ The manager also uses `myspec-mcp:implement` (how progress is written back) and 
 1. Run `/myspec-factory:setup` in the repository and approve the settings it proposes.
 2. Switch to the Software Factory Manager style and ask: "Run the factory for project X, bundle Y."
 3. The manager opens the event feed, then asks once for the number of parallel workers, the merge method, how much it may do without asking (the autonomy level, below), whether cloud sessions are allowed, and who settles minor implementation details (`minor_defaults`: you, or the manager with each choice recorded as a reversible Clarification). It checks that the spec is complete and asks you about every open question or doubt, bundling small defaults into one approve-or-change question; nothing is dispatched until that passes. Then it plans wave 1 and tells you the cost. For a brownfield bundle without `tasks.md`, it first drafts the task list (one lane for a small change, up to 3 parallel lanes for a large one) and asks for your approval.
-4. Workers open pull requests titled `task N: <title>` (or `task N1, N2: …` for a chain, `lane L: tasks …` for a lane) with a `## Factory report` at the end.
-5. The manager verifies each pull request, merges it once it passes the merge gate, watches the deploy, marks the task `[x]` on MySpec, and dispatches the next wave.
+4. Workers open pull requests titled `task N1, N2, …: <summary>` (or `task N: <title>` for a single task, `lane L: tasks …` for a lane) with a `## Factory report` at the end.
+5. The manager verifies each pull request, merges it once it passes the merge gate, watches the deploy, marks its tasks `[x]` on MySpec, and dispatches the next wave.
 6. At the end of a milestone it runs the test suite, checks the code against the spec, uploads a milestone summary, drafts the spec corrections and follow-up tasks, and asks you one question about what to apply and dispatch.
 
 ### Autonomy levels
@@ -160,7 +160,7 @@ At every level the manager still asks you about spec questions, changes a worker
 
 ## What workers deliver
 
-One task, one pull request, titled `task N: <title>`. A lane worker does every task of its lane in order on one branch and opens one pull request titled `lane L: tasks N1, N2, …`; it only edits the paths its lane owns. Tests are named after each acceptance criterion, and the body ends with a `## Factory report`. When a worker cannot finish, the report starts with `BLOCKED: spec` or `BLOCKED: env`. Workers never edit `tasks.md` or other spec files.
+One group of related tasks, one branch, one pull request, titled `task N1, N2, …: <summary>`, with one commit per task. A task with nothing related to it gets its own worker and a pull request titled `task N: <title>`. A lane worker does every task of its lane in order on one branch and opens one pull request titled `lane L: tasks N1, N2, …`; it only edits the paths its lane owns. Tests are named after each acceptance criterion, and the body ends with a `## Factory report`. When a worker cannot finish, the report starts with `BLOCKED: spec` or `BLOCKED: env`. Workers never edit `tasks.md` or other spec files.
 
 ## Safety and cost
 
@@ -189,7 +189,7 @@ Schedule a factory shift every night at 2am.
 | `extraKnownMarketplaces` and `enabledPlugins` | Repository `.claude/settings.json` (written by `setup` when you approve) | Lets workers load `myspec-mcp` |
 | `MYSPEC_API_TOKEN` | Cloud environment at claude.ai/code | MySpec access for cloud workers and scheduled shifts (they cannot use browser sign-in) |
 | `MYSPEC_API_TOKEN` | `env` in the managed repository's gitignored `.claude/settings.local.json` | MySpec access for local workers. A separate token keeps workers off the manager's browser sign-in, which two servers cannot share |
-| `.specs/<bundle>/factory-sessions.json` | Local, gitignored | Record of every dispatched worker: task, session id, URL, branch, status |
+| `.specs/<bundle>/factory-sessions.json` | Local, gitignored | Record of every dispatched worker: tasks, session id, URL, branch, status |
 | `.specs/<bundle>/factory-run.md` | Local, gitignored | Run log and board cache |
 
 Add `.specs/` to the repository's `.gitignore`.

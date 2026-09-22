@@ -14,13 +14,13 @@ Every worker session the manager starts is recorded in a local registry so the m
   "bundle": "<bundle>",
   "sessions": [
     {
-      "task": 4,
+      "task": "4,5,7",
       "title": "Checkout API",
       "path": "cloud-cli",
       "session_id": "session_01DiUkqY2kzbUbDmW1w96rfi",
-      "agent_name": "factory checkout task 4: Checkout API",
+      "agent_name": "factory checkout tasks 4, 5, 7: Checkout API",
       "url": "https://claude.ai/code/session_01DiUkqY2kzbUbDmW1w96rfi",
-      "branch": "factory/<bundle>/task-4",
+      "branch": "factory/<bundle>/tasks-4-5-7",
       "started_at": "2026-09-12T13:05:00Z",
       "status": "running",
       "pr": null,
@@ -31,6 +31,7 @@ Every worker session the manager starts is recorded in a local registry so the m
 }
 ```
 
+- `task`: the group's task numbers as one string (`"4,5,7"`, what `add-session --task "4,5,7"` stores), or a number for a single-task worker (branch `factory/<bundle>/task-<N>`).
 - Lane workers (manager-planned `tasks.md` with a `## Branch Plan`): add `"lane": <L>` and `"tasks": [<N1>, <N2>, …]`, set `task` to the first task of the lane, and expect branch `factory/<bundle>/lane-<L>`.
 - `path`: `cloud-agent` (Agent tool, remote), `cloud-cli` (`claude --cloud`), `worktree-agent`, or `worktree-cli` (`claude --bg`).
 - `agent_name`: the name the session shows in `ListAgents` while the manager is connected to Remote Control (the brief's first line); `SendMessage` uses it. `null` until seen.
@@ -132,20 +133,20 @@ python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>
 |---|---|
 | `show` | Print the registry |
 | `add-session --task --title --path --session-id --url --branch --started-at [--notes]` | Append a session entry with `status: running` |
-| `set --session <index, last or task> key=value…` | Update `status`, `pr`, `branch`, `autofix`, `verified_sha`, `agent_name` or `cloud_title` |
-| `note --session <index, last or task> "text"` | Append to the entry's `notes` |
+| `set --session <index, last, task list or task> key=value…` | Update `status`, `pr`, `branch`, `autofix`, `verified_sha`, `agent_name` or `cloud_title` |
+| `note --session <index, last, task list or task> "text"` | Append to the entry's `notes` |
 | `stream --token-id --prefix --expires-at [--revoked-at]` | Record the stream token (never the URL) |
 | `stream-seq N` | Record `stream.last_seq` |
 | `policy key=value…` | Set run policy keys |
 | `contract <key> "text"` | Add or replace a `contract_notes` entry |
 | `log --run-log <path> "text"` | Append one line to the run log |
 
-It refuses any value that contains a stream URL.
+`--session` takes an index from `show`, `last`, a group's task list (`"4,5,7"`), or one task number, which finds the newest entry carrying that task (a group's list or a lane's `tasks`); a bare number is read as an index only when no entry carries it. It refuses any value that contains a stream URL.
 
 ## Using the registry
 
-- Steer: look up the task's entry; with Remote Control connected, `SendMessage` to `agent_name` (confirm it in `ListAgents` first); otherwise `claude -p "<message>" --cloud <session_id>`. Record what was sent and how in `notes`.
+- Steer: look up the entry whose `task` list holds the task; with Remote Control connected, `SendMessage` to `agent_name` (confirm it in `ListAgents` first); otherwise `claude -p "<message>" --cloud <session_id>`. Record what was sent and how in `notes`.
 - Check: open `url`, or `/tasks` in an interactive session; `claude --teleport <session_id>` to pull the branch locally.
-- Integrate: match pull requests to entries by `branch` or task number; set `pr` and `status`.
+- Integrate: match pull requests to entries by `branch` or by the task numbers in the title (`task 4, 5, 7:`); set `pr` and `status`.
 - Resume after a manager restart: read the registry first; entries with `status: "running"` are sessions to check before dispatching anything new.
 - Unattended shifts have no local disk that persists between runs; they put the same entries into their report comment on the tracking issue and read the previous comment at the start of the next shift.

@@ -21,7 +21,8 @@ Usage (--file is required by every subcommand except `log`):
   registry.py log --run-log .specs/<bundle>/factory-run.md "text"   appends "- <ISO now> text"
 
 SEL is a session index as shown by `show` (0-based), `last`, or a task string ("52", "45,46,47");
-a task string matching several entries picks the newest.
+a single task number also matches the group or lane entry that carries it ("46" finds "45,46,47"),
+and is read as an index only when no entry carries it. A task string matching several entries picks the newest.
 Exit codes: 0 ok, 1 not found / bad input, 2 refused (stream URL) or usage error.
 """
 import argparse
@@ -115,15 +116,27 @@ def pairs(items):
     return out
 
 
+def holds_task(s, sel):
+    """True when the entry's task string equals sel, or sel is one task number the entry carries
+    (a group's "4,5,7" list or a lane's `tasks`)."""
+    want = sel.replace(" ", "")
+    stored = str(s.get("task")).replace(" ", "")
+    if stored == want:
+        return True
+    if not want.isdigit():
+        return False
+    return want in stored.split(",") or want in [str(t) for t in (s.get("tasks") or [])]
+
+
 def find_session(data, sel):
     sessions = data["sessions"]
     if not sessions:
         die("no sessions in the registry")
     if sel == "last":
         return len(sessions) - 1
-    if sel.isdigit() and int(sel) < len(sessions) and not any(str(s.get("task")) == sel for s in sessions):
+    if sel.isdigit() and int(sel) < len(sessions) and not any(holds_task(s, sel) for s in sessions):
         return int(sel)
-    matches = [i for i, s in enumerate(sessions) if str(s.get("task")).replace(" ", "") == sel.replace(" ", "")]
+    matches = [i for i, s in enumerate(sessions) if holds_task(s, sel)]
     if matches:
         return matches[-1]
     if sel.isdigit() and int(sel) < len(sessions):

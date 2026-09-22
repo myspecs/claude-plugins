@@ -53,7 +53,7 @@ A watch that expires with no events is a suspect watch: check the state directly
 | Action | Command | When |
 |---|---|---|
 | Teleport | `cd <clone> && claude --teleport <session_id>` | Pull the worker's branch and history into the user's terminal to finish or debug by hand |
-| Open the pull request for it | `gh pr create --head <branch> --title "task N: <title>" --body-file <report>` (lane: `--title "lane L: tasks N1, N2"`) | The worker pushed but never opened one |
+| Open the pull request for it | `gh pr create --head <branch> --title "task N1, N2: <summary>" --body-file <report>` (single task: `--title "task N: <title>"`; lane: `--title "lane L: tasks N1, N2"`) | The worker pushed but never opened one |
 | Local verification | Read-only subagent in a throwaway worktree (`git worktree add --detach`) | Run the suites and check acceptance criteria without touching the user's checkout |
 
 Taking over is outward-facing work: opening a pull request, merging, or pushing needs the user's agreement unless the run's policy already covers it.

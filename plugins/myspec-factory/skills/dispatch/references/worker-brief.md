@@ -1,25 +1,28 @@
 # Worker brief template
 
-Fill every placeholder. The worker sees nothing but this text, the repository, and its tools.
+Fill every placeholder. The worker sees nothing but this text, the repository, and its tools. The template is written for a group of related tasks (the dispatch skill's §0), which is the normal case; see `## Single-task brief` for a task with nothing to group and `## Lane variant` for a lane.
 
 ```markdown
-factory <bundle> task <N>: <title>
+factory <bundle> tasks <N1>, <N2>, …: <summary>
 
-You are a Claude Code worker session in a software factory. Implement exactly one task from a MySpec specification bundle, open a pull request, and stop. Do not implement other tasks. Do not edit tasks.md or any file under `specs/`, `openspec/`, or `.specs/`.
+You are a Claude Code worker session in a software factory. Implement the tasks below from a MySpec specification bundle, in the order given, on one branch, open ONE pull request, and stop. Do not implement any other task. Do not edit tasks.md or any file under `specs/`, `openspec/`, or `.specs/`.
 
 ## Repository
 - Repo: <owner/repo>, default branch: <main>
-- Create branch: factory/<bundle>/task-<N> (if the platform forces a claude/ prefix, keep it and put "task <N>" in the PR title)
+- Create branch: factory/<bundle>/tasks-<N1>-<N2>-… (if the platform forces a claude/ prefix, keep it and put "task <N1>, <N2>, …" in the PR title)
 - Setup (every step of the project's pull-request CI job, in order, including installs of sibling and shared packages and toolchain setup): <commands>
 - Run tests with: <command>
 - Lint / typecheck with: <command>
 - Reviewer: <login of the review bot or person whose approval gates the merge>
 
 <!-- build-brief.py emits the task, requirement and decision sections below as `## Tasks (in order)`, `## Requirements these tasks satisfy (verbatim)` and `## Decisions already made`; keep its headings, even for one task. -->
-## Task <N>: <title>  (milestone <M>: <name>)
+## Tasks (in order)
+### Task <N1>: <title>  (milestone <M>: <name>)
 <task block verbatim, including implementation details, Acceptance Criteria, _Dependencies_, _Requirements_, _Complexity_>
+### Task <N2>: <title>
+<task block verbatim>
 
-## Requirements this task satisfies
+## Requirements these tasks satisfy (verbatim)
 ### FR-00X: <title>
 <description, user role, every acceptance criterion verbatim>
 ### NFR-00Y: <category>
@@ -39,9 +42,9 @@ You are a Claude Code worker session in a software factory. Implement exactly on
 
 ## Solution excerpts
 ### Module <name>
-<responsibilities, key interfaces, data models, error handling relevant to this task>
+<responsibilities, key interfaces, data models, error handling relevant to these tasks>
 ### API / data model
-<endpoints or entities this task implements>
+<endpoints or entities these tasks implement>
 
 ## Dependencies already merged
 <task numbers and one line each on what they provide; branch names if not yet on the default branch>
@@ -54,19 +57,20 @@ You are a Claude Code worker session in a software factory. Implement exactly on
 - Wait on state (`waitFor` a condition, fake timers), never on a fixed sleep.
 
 ## Definition of done
-1. One test per acceptance criterion, following the test rules above; they fail before your change and pass after.
+1. One test per acceptance criterion of every task, following the test rules above; they fail before your change and pass after.
 2. Implementation follows the solution module layout and every constitution constraint above.
 3. Revert checks: for each new or changed test, break the production behaviour it guards with a minimal local change, run it, confirm it fails, then restore the code. Record each one on the `- Revert checks:` report line. A test that still passes is rewritten until it fails.
 4. Tests, lint, and typecheck pass locally with the commands above, and every new or changed test clears `## Self-check before the PR`.
 5. Stacking and z-index, visibility, layout and colours are invisible to a DOM-less test runner. For such a change, check it in a real browser (Playwright or headless Chromium against the running app or a faithful harness), or say plainly in the pull request body that it was not verified visually. Never claim it works otherwise.
-6. Commit with message: "feat: task <N> <title> (FR-00X, NFR-00Y)".
-7. Push the branch. If `gh` is authenticated (`gh auth status`), open a pull request against <default branch> titled "task <N>: <title>" whose body ends with the report below. If `gh` is not available but GitHub MCP tools are (for example `create_pull_request`), open it with them. With neither, end your final message with the pushed branch name and the same report; the manager opens the pull request.
+6. One commit per task, in the order given: "feat: task <N> <title> (FR-00X, NFR-00Y)" (or `test:` / `chore:` / `docs:` as fits).
+7. Push the branch. If `gh` is authenticated (`gh auth status`), open a pull request against <default branch> titled "task <N1>, <N2>, …: <summary>" whose body ends with the report below. If `gh` is not available but GitHub MCP tools are (for example `create_pull_request`), open it with them. With neither, end your final message with the pushed branch name and the same report; the manager opens the pull request.
 8. Request the review at once: `gh pr edit <n> --add-reviewer <reviewer>`. Then confirm `gh pr view <n> --json reviewRequests` lists it. A review bot does not start until it is requested, so a pull request without a request waits forever with every check green.
 
 ## Factory report (paste at the end of the PR body)
 ```
 ## Factory report
-- Task: <N> / <N1>-<N2> / <N1>,<N2>,<N3> (milestone <M>)
+- Task: <N1>,<N2>,<N3> (milestone <M>)
+- Task <N> …: <one line for each decision task or blocked task>
 - Requirements: FR-00X, NFR-00Y
 - Tests added: <files>
 - Test run: <command> -> <pass/fail summary>
@@ -97,6 +101,7 @@ Enable Claude Code's Auto-fix on your own pull request so CI failures and review
 After the pull request exists, watch it until it is approved. After every push, read the latest review by <reviewer> in full from the API — `gh api repos/<owner>/<repo>/pulls/<n>/reviews` and `gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate` — not a truncated view. Fold every open item of that review and every item the manager sent into ONE push per round; several small pushes each restart the review. Fix every blocking and major item; where you disagree, reply with the reason instead of changing code. Reply on each thread with the commit that fixed it. Re-request review after every push (`gh pr edit <n> --add-reviewer <reviewer>`), and update the Factory report as `## Where the Factory report goes` says. Keep every check green. Do not merge and do not force-push.
 
 ## If you cannot finish
+- A task you cannot finish blocks: <per task, as the manager decided: "the tasks after it that depend on it: commit the tasks before it, then report BLOCKED: naming that task" or "only itself: commit the other tasks and report BLOCKED: naming that task">.
 - Spec is ambiguous or contradicts itself: do not guess. Open a draft PR with whatever is safe, add the label "blocked" if you can, and put "BLOCKED: spec - <question>" as the first line of the Factory report.
 - Environment or dependency problem: put "BLOCKED: env - <detail>" the same way.
 - A test shows that code already on <default branch> does not meet the spec (a defect in shipped code, not in your task): do not fix the production code in this pull request. Commit the test as `it.skip` (or `it.fails`) with a comment citing the defect, open a GitHub issue for it if `gh` is available, finish your other tasks, and add a "DEFECT: <issue number or one-line summary>, pinned by <test name>" line to the Factory report. A DEFECT line is not a BLOCKED line; the pull request can still merge.
@@ -120,16 +125,16 @@ Place these after the requirements, in this order:
 - Task <N> is a decision task: choose <A or B> and state the choice and the reason on the `- Task <N> decision:` line of the Factory report.
 ```
 
-## Multi-task variant (one worker, a chain of tasks, one pull request)
+## Single-task brief
 
-For a chain of tasks that ships as one pull request, change the template as follows and keep everything else:
+Only for a task that nothing relates to (the dispatch skill's §0). Keep the template and change:
 
-- First line: `factory <bundle> <PR label>: tasks <N1>, <N2>, … <short summary>` (for example `factory checkout PR 2: tasks 30, 31, 32 floating panel`).
-- Opening paragraph: `Implement tasks <N1>, <N2>, … in this order, on one branch, and open ONE pull request. Do not implement any other task.`
-- Replace the single task section with `## Tasks (in order)`, each task block verbatim, followed by every cited requirement once.
-- Definition of done: one commit per task in order (`feat: task <N> <title> (<ids>)`, or `test:`/`chore:`/`docs:` as fits); tests for every acceptance criterion of every task. Pull request title: `task <N1>, <N2>, …: <summary> (<bundle> <PR label>)`.
-- Factory report: `- Task: <N1>,<N2>,<N3>` and one `- Task <N> …:` line for each decision task or blocked task.
-- Blocked rule — pick one and say it: for a dependency chain, "a task you cannot finish blocks the ones after it: commit the tasks before it, then report `BLOCKED:` naming that task"; for independent follow-ups, "a task you cannot finish blocks only itself: commit the others and report `BLOCKED:` naming that task".
+- First line: `factory <bundle> task <N>: <title>`. Opening paragraph: `Implement task <N> from a MySpec specification bundle, open a pull request, and stop. Do not implement any other task.`
+- Branch: `factory/<bundle>/task-<N>`. Pull request title: `task <N>: <title>`. One commit.
+- Factory report: `- Task: <N>`. Drop the blocked-rule line under `## If you cannot finish`.
+- Keep the headings `build-brief.py` emits (`## Tasks (in order)`, `## Requirements these tasks satisfy (verbatim)`), even for one task.
+
+When `tasks.md` names a pull-request split for the group (for example "PR 2"), add it to the summary in the first line and the pull request title: `factory checkout tasks 30, 31, 32: floating panel (PR 2)`, `task 30, 31, 32: floating panel (PR 2)`.
 
 ## Lane variant
 
@@ -137,7 +142,7 @@ For a lane of a manager-planned `tasks.md` (`## Branch Plan`), change the templa
 
 - First line: `factory <bundle> lane <L>: <lane name>`. Opening paragraph: `Implement every task of lane <L> in the order given, on one branch, and open one pull request.`
 - Branch: `factory/<bundle>/lane-<L>`. Pull request title: `lane <L>: tasks <N1>, <N2>, …`.
-- Replace the single task section with `## Lane <L> tasks (in order)`, each task block verbatim, and add:
+- Rename `## Tasks (in order)` to `## Lane <L> tasks (in order)`, and add:
   ```markdown
   ## Lane boundaries
   - You own: <paths from Owns>
@@ -145,10 +150,9 @@ For a lane of a manager-planned `tasks.md` (`## Branch Plan`), change the templa
   - Shared contracts (implement exactly as written; other lanes build against the same text):
     <each contract in full>
   ```
-- Definition of done: one commit per task in order (`feat: task <N> <title> (<ids>)`); tests for every acceptance criterion of every task in the lane.
 - Factory report: `- Lane: <L>` and `- Task: <N1>,<N2>,<N3>`.
-- A task that cannot be finished blocks the lane: finish and commit the tasks before it, then report `BLOCKED:` naming that task.
+- Blocked-rule line: a task that cannot be finished blocks the lane: finish and commit the tasks before it, then report `BLOCKED:` naming that task.
 
 The first line seeds the session title the manager looks for in `ListAgents`; keep it exactly in that shape, and expect the cloud to rewrite it (it keeps part of the line and changes capitalisation), so record the title the session actually got.
 
-The manager cannot receive a reply from a cloud worker. Every brief therefore states where answers go: the pull request body, a review reply, or a `BLOCKED:` line — never "tell the manager". A cloud session also ignores the branch name asked for above and pushes its own `claude/`-prefixed branch; that is expected, which is why the pull-request title carries `task <N>`. Keep the brief under about 400 lines. Excerpt the solution and requirements; do not paste whole documents. Never include credentials.
+The manager cannot receive a reply from a cloud worker. Every brief therefore states where answers go: the pull request body, a review reply, or a `BLOCKED:` line — never "tell the manager". A cloud session also ignores the branch name asked for above and pushes its own `claude/`-prefixed branch; that is expected, which is why the pull-request title carries the task numbers. Keep the brief under about 400 lines. Excerpt the solution and requirements; do not paste whole documents. Never include credentials.

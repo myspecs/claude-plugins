@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Build or refresh the factory wave plan from a MySpec tasks.md, or write the tasks.md a brownfield bundle lacks. Use when the user says "plan the factory run", "what can run in parallel", "build the waves", "which tasks are ready", "plan the tasks for this proposal", or before dispatching workers. Derives the board from platform checkboxes and open pull requests and groups ready tasks into waves of non-overlapping work; when the bundle has no tasks.md, plans the whole change into lanes sized to the change (one worker for a small change, up to 3 parallel lanes for a large one; one branch each) and uploads the list only after the user approves it.
+description: Build or refresh the factory wave plan from a MySpec tasks.md, or write the tasks.md a brownfield bundle lacks. Use when the user says "plan the factory run", "what can run in parallel", "build the waves", "which tasks are ready", "plan the tasks for this proposal", or before dispatching workers. Derives the board from platform checkboxes and open pull requests, groups related tasks (dependency chains, shared files or modules, the same requirement) into one worker each, and builds waves of those groups; when the bundle has no tasks.md, plans the whole change into lanes sized to the change (one worker for a small change, up to 3 parallel lanes for a large one; one branch each) and uploads the list only after the user approves it.
 user-invocable: false
 ---
 
@@ -54,25 +54,26 @@ Bundles that arrive with their own `tasks.md` keep the wave planning below; do n
 | Status | Source of truth |
 |---|---|
 | done | `- [x]` in `tasks.md` on the platform |
-| in flight | An open pull request or remote branch named `factory/<bundle>/task-<N>`, or `factory/<bundle>/lane-<L>` for a lane listing task N in `## Branch Plan` (also accept `claude/`-prefixed branches whose title or body names `task N` or `lane L`) |
+| in flight | An open pull request or remote branch named `factory/<bundle>/task-<N>`, `factory/<bundle>/tasks-<N1>-<N2>-…` listing N, or `factory/<bundle>/lane-<L>` for a lane listing task N in `## Branch Plan`; a pull request titled `task N1, N2, …:` whose list holds N (also accept `claude/`-prefixed branches whose title or body names task N or `lane L`) |
 | blocked | A pull request labelled `blocked`, or whose `## Factory report` says `BLOCKED` |
 | ready | `- [ ]`, not in flight, every `_Dependencies:_` number done |
 | waiting | `- [ ]` with an unmet dependency |
 
 Use `gh pr list --state open --json number,title,headRefName,labels,statusCheckRollup` and `git ls-remote --heads origin 'factory/*'`. Never store the board as truth; a stored copy is a cache.
 
-## 3. Build waves
+## 3. Build waves of worker groups
 
-1. Take every ready task.
-2. For each, list the solution modules and likely files: the `_Requirements:_` ids map to modules in `solution.md`; the task's implementation details name files. When two ready tasks share a module or file, they go in different waves (the lower task number first).
-3. Order the wave by milestone, then task number. Cap the wave at the concurrency limit the user set; leftover ready tasks form the next wave.
-4. Mark tasks the constitution or task text calls Large as single-session candidates only if their acceptance criteria are precise; otherwise flag them for splitting before dispatch.
+1. Take every ready task, and every waiting task of the current milestone whose unmet dependencies can all go in the same group as it (a chain one worker finishes without waiting for a merge).
+2. For each, list the solution modules and likely files: the `_Requirements:_` ids map to modules in `solution.md`; the task's implementation details name files.
+3. Group them with the rules in the `dispatch` skill's §0: a dependency chain, tasks that share a module or file, and tasks for the same requirement or feature go to one worker, as many as the group holds. Tasks that share a module or file are never given to two workers; they go in the same group, not in different waves. A task gets a worker of its own only when nothing relates to it. Groups stay inside the current milestone and inside any split `tasks.md` declares.
+4. The wave is the set of groups, ordered by milestone, then lowest task number. The concurrency cap counts workers, not tasks: when there are more groups than the cap, merge the smallest groups into one another instead of leaving work for a later wave.
+5. Mark tasks the constitution or task text calls Large as single-session candidates only if their acceptance criteria are precise; otherwise flag them for splitting before dispatch.
 
 ## 3b. Task shapes that change dispatch
 
 - **Decision tasks** ("resolve the open questions", "confirm scope"): the answer belongs to the user and usually edits `requirements.md`. The manager resolves them with the user, records the decisions as Clarifications, marks the task `[x]`, and dispatches nothing for it — a worker may not edit spec files.
 - **Contract freeze tasks** (shared types, stub routes, event kinds frozen before parallel branches start): check the freeze is complete before merging it — request bodies as well as responses, list response wrappers, internal events and RPC or subject names the branches exchange, error `reason` strings, and the unit of any offset or length (bytes, code points, UTF-16). Drift tests must fail in BOTH directions. Anything left out becomes an unfrozen coupling the manager has to relay by hand.
-- **Branch-ownership plans** (`tasks.md` assigns directory ownership and chains tasks inside a branch): dispatch one worker per branch chain rather than one per task, with the ownership map and the do-not-touch list in every brief. A `## Branch Plan` written in step 1b is the manager-written form of this.
+- **Branch-ownership plans** (`tasks.md` assigns directory ownership and chains tasks inside a branch): each branch chain is one group and one worker, with the ownership map and the do-not-touch list in every brief. A `## Branch Plan` written in step 1b is the manager-written form of this.
 
 ## 4. Output
 
@@ -81,8 +82,8 @@ Use `gh pr list --state open --json number,title,headRefName,labels,statusCheckR
 | Task | Title | Status | Deps | Requirements | PR / session |
 |------|-------|--------|------|--------------|--------------|
 
-## Wave 1 (N sessions, cost note)
-| Task | Modules / files | Size | Brief ready |
+## Wave 1 (N workers, cost note)
+| Worker | Tasks (in order) | Why grouped | Modules / files | Size | Brief ready |
 
 ## Lanes (manager-planned bundles only; replaces Wave 1)
 | Lane | Branch | Tasks | Owns | Size | Brief ready |
