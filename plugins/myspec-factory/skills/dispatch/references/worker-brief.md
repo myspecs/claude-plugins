@@ -60,7 +60,7 @@ You are a Claude Code worker session in a software factory. Implement exactly on
 4. Tests, lint, and typecheck pass locally with the commands above, and every new or changed test clears `## Self-check before the PR`.
 5. Stacking and z-index, visibility, layout and colours are invisible to a DOM-less test runner. For such a change, check it in a real browser (Playwright or headless Chromium against the running app or a faithful harness), or say plainly in the pull request body that it was not verified visually. Never claim it works otherwise.
 6. Commit with message: "feat: task <N> <title> (FR-00X, NFR-00Y)".
-7. Push the branch. If `gh` is authenticated (`gh auth status`), open a pull request against <default branch> titled "task <N>: <title>" whose body ends with the report below. If `gh` is not available, end your final message with the pushed branch name and the same report; the manager opens the pull request.
+7. Push the branch. If `gh` is authenticated (`gh auth status`), open a pull request against <default branch> titled "task <N>: <title>" whose body ends with the report below. If `gh` is not available but GitHub MCP tools are (for example `create_pull_request`), open it with them. With neither, end your final message with the pushed branch name and the same report; the manager opens the pull request.
 8. Request the review at once: `gh pr edit <n> --add-reviewer <reviewer>`. Then confirm `gh pr view <n> --json reviewRequests` lists it. A review bot does not start until it is requested, so a pull request without a request waits forever with every check green.
 
 ## Factory report (paste at the end of the PR body)
@@ -81,8 +81,12 @@ You are a Claude Code worker session in a software factory. Implement exactly on
 Go through each item below for every new or changed test before you open the pull request, and fix any that applies. The manager's verifier checks the same list.
 <the numbered items of the verification checklist, except those marked verifier only, pasted verbatim by the manager>
 
-## Report to the platform (only if MySpec tools are available to you)
-If your tool list contains mcp__plugin_myspec-mcp_myspec__upload_attachment or mcp__myspec__upload_attachment: after the pull request exists (or the branch is pushed), write the Factory report to a file outside the repository (for example under $TMPDIR, so it is never committed) and upload it with upload_attachment(project_id="<project_id>", file_path="<absolute path>", file_name="factory-<bundle>-task-<N>-report.md", override=true). This tells the manager you are done. Do not call any other MySpec write tool.
+## Where the Factory report goes (the pull request only)
+The Factory report lives on the pull request, never on MySpec. Do not upload it with `upload_attachment` or any other MySpec tool, even when MySpec tools are in your tool list.
+- First report: at the end of the pull request description (step 7).
+- Every later round (review fixes, messages from the manager): update the report in the description with `gh pr edit <n> --body-file <file>`, then post the updated report as a normal pull request comment whose first line is `## Factory report` with `gh pr comment <n> --body-file <file>`. The newest one is the current report.
+- Write the body or comment to a file outside the repository (for example under `$TMPDIR`) so it is never committed.
+- No `gh`: use the GitHub MCP tools when present (`update_pull_request` for the description, `add_issue_comment` for the comment). With neither, put the report in your final message; the manager posts it.
 
 ## Turn on Auto-fix as soon as the pull request exists
 Enable Claude Code's Auto-fix on your own pull request so CI failures and reviewer comments are picked up even after this session goes idle: subscribe to your pull request's activity (watch the PR URL) so failing checks and review comments wake this session. A cloud worker cannot click the Auto-fix toggle in its own session, so report `off` or `unavailable` rather than `on` unless Auto-fix was actually enabled. Auto-fix needs the Claude GitHub App installed on the repository; if it is not available, say so in the Factory report and fall back to the review round below. Auto-fix does not react to merge conflicts from an advancing base branch — rebase when asked.
@@ -90,13 +94,13 @@ Enable Claude Code's Auto-fix on your own pull request so CI failures and review
 **Never merge, and never arrange for a merge to happen without a person.** Do not run `gh pr merge` in any form, do not pass `--auto`, do not switch on GitHub's auto-merge toggle, and do not add the pull request to a merge queue. Merging is the factory manager's decision or the repository owner's; your job ends at an approved, green pull request.
 
 ## Review round (you own it)
-After the pull request exists, watch it until it is approved. After every push, read the latest review by <reviewer> in full from the API — `gh api repos/<owner>/<repo>/pulls/<n>/reviews` and `gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate` — not a truncated view. Fold every open item of that review and every item the manager sent into ONE push per round; several small pushes each restart the review. Fix every blocking and major item; where you disagree, reply with the reason instead of changing code. Reply on each thread with the commit that fixed it. Re-request review after every push (`gh pr edit <n> --add-reviewer <reviewer>`). Keep every check green. Do not merge and do not force-push.
+After the pull request exists, watch it until it is approved. After every push, read the latest review by <reviewer> in full from the API — `gh api repos/<owner>/<repo>/pulls/<n>/reviews` and `gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate` — not a truncated view. Fold every open item of that review and every item the manager sent into ONE push per round; several small pushes each restart the review. Fix every blocking and major item; where you disagree, reply with the reason instead of changing code. Reply on each thread with the commit that fixed it. Re-request review after every push (`gh pr edit <n> --add-reviewer <reviewer>`), and update the Factory report as `## Where the Factory report goes` says. Keep every check green. Do not merge and do not force-push.
 
 ## If you cannot finish
 - Spec is ambiguous or contradicts itself: do not guess. Open a draft PR with whatever is safe, add the label "blocked" if you can, and put "BLOCKED: spec - <question>" as the first line of the Factory report.
 - Environment or dependency problem: put "BLOCKED: env - <detail>" the same way.
 - A test shows that code already on <default branch> does not meet the spec (a defect in shipped code, not in your task): do not fix the production code in this pull request. Commit the test as `it.skip` (or `it.fails`) with a comment citing the defect, open a GitHub issue for it if `gh` is available, finish your other tasks, and add a "DEFECT: <issue number or one-line summary>, pinned by <test name>" line to the Factory report. A DEFECT line is not a BLOCKED line; the pull request can still merge.
-- No `gh`: push whatever is safe on the task branch and put the BLOCKED line first in your final message.
+- No `gh`: open the draft pull request with the GitHub MCP tools when present; otherwise push whatever is safe on the task branch and put the BLOCKED line first in your final message.
 Stop after the pull request exists or the branch is pushed. Do not merge.
 ```
 
@@ -142,7 +146,7 @@ For a lane of a manager-planned `tasks.md` (`## Branch Plan`), change the templa
     <each contract in full>
   ```
 - Definition of done: one commit per task in order (`feat: task <N> <title> (<ids>)`); tests for every acceptance criterion of every task in the lane.
-- Factory report: `- Lane: <L>` and `- Task: <N1>,<N2>,<N3>`; the attachment name is `factory-<bundle>-lane-<L>-report.md`.
+- Factory report: `- Lane: <L>` and `- Task: <N1>,<N2>,<N3>`.
 - A task that cannot be finished blocks the lane: finish and commit the tasks before it, then report `BLOCKED:` naming that task.
 
 The first line seeds the session title the manager looks for in `ListAgents`; keep it exactly in that shape, and expect the cloud to rewrite it (it keeps part of the line and changes capitalisation), so record the title the session actually got.

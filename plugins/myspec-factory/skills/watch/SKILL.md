@@ -1,6 +1,6 @@
 ---
 name: watch
-description: Open the MySpec project event feed for a factory run and react to it. Use when the user says "watch the project", "listen for events", "open the event stream", "start the factory feed", "create a stream token for the factory", or when the Software Factory Manager begins a run or a wave and needs to know, without polling, when tasks.md or other spec files change, when a worker uploads its report, when a spec session completes, or when a project is deleted. Mints a stream token, feeds its URL straight into Claude Code's Monitor tool, and maps each event to a manager action.
+description: Open the MySpec project event feed for a factory run and react to it. Use when the user says "watch the project", "listen for events", "open the event stream", "start the factory feed", "create a stream token for the factory", or when the Software Factory Manager begins a run or a wave and needs to know, without polling, when tasks.md or other spec files change, when a spec session completes, or when a project is deleted. Mints a stream token, feeds its URL straight into Claude Code's Monitor tool, and maps each event to a manager action.
 user-invocable: false
 ---
 
@@ -25,7 +25,7 @@ create_stream_token(
   resource_type: "project",
   resource_id: "<project_id>",
   event_types: ["spec_file.created", "spec_file.updated", "spec_file.deleted",
-                "attachment.created", "spec_session.updated", "project.updated", "project.deleted"],
+                "spec_session.updated", "project.updated", "project.deleted"],
   ttl_seconds: 28800,   # 8 hours while workers run; see "Keeping the feed alive"
   label: "factory <bundle> <YYYY-MM-DD>"
 )
@@ -47,7 +47,7 @@ Monitor({
 
 Omit `?after=` on the first open so the feed starts from now. The first frame is `stream.ready`; check that its `resource.id` is the project and its `event_types` list is what you asked for, then note `last_seq`. Open the feed before deriving the board (or re-derive the board right after `stream.ready`), otherwise a write that lands between your read and the socket opening is lost.
 
-Watch pull requests with the tested scripts in this skill's `scripts/` directory (this skill's base directory + `/scripts/`), because cloud workers do not emit platform events unless they upload their report. Never hand-write the loop: inline versions have failed on shell word splitting, on `echo "$json" | jq` in zsh, and on GitHub's lowercase status values.
+Watch pull requests with the tested scripts in this skill's `scripts/` directory (this skill's base directory + `/scripts/`), because workers report only through their pull requests (the `## Factory report` in the description or a pull request comment), never through platform events. Never hand-write the loop: inline versions have failed on shell word splitting, on `echo "$json" | jq` in zsh, and on GitHub's lowercase status values.
 
 | Script | Watches | Exits |
 |---|---|---|
@@ -67,11 +67,10 @@ Each frame arrives as a notification. Keep `last_seq` from every event frame in 
 | `spec_file.updated` lifecycle shape (`data.state`): `trashed` on a bundle file | Stop dispatch, report; `restored`: re-read the file |
 | `spec_file.lock` (when subscribed) with state acquired on a bundle file | Someone is editing; delay manager writes to that file until released or taken over |
 | Any `spec_file.*` whose path is outside the bundle's directory | Ignore; mention in the next report |
-| `attachment.created` whose name matches `factory-<bundle>-task-<N>-report.md` or `factory-<bundle>-lane-<L>-report.md` | A worker finished and uploaded its report: run `integrate` for task N, or for every task of lane L |
 | `spec_session.updated` with a completed status | A spec session finished; a new or revised bundle may exist. Offer to plan it |
 | `project.deleted` | Stop every worker you can (`SendMessage` or `claude -p "stop" --cloud <id>`); the token is already revoked, so set `stream.revoked_at`, stop the pull-request monitor, do not mint, report |
 | `stream.expiring`, or `expires_at` less than five minutes away | Rotate: mint a replacement with the same scope, open a new Monitor on it (no `?after=`; buffers are per token), wait for its `stream.ready`, then stop the old one. Drop any frame you have already processed. Update the registry |
-| `stream.error` then close `4001` | Token unknown, revoked, or expired: if the run continues, mint a replacement and resync (`get_spec_file` on every bundle file, `list_attachments` for reports) because the gap is unrecoverable. `reason` resource deleted: do not mint; see `project.deleted` |
+| `stream.error` then close `4001` | Token unknown, revoked, or expired: if the run continues, mint a replacement and resync (`get_spec_file` on every bundle file; Factory reports are on the pull requests, which the pull-request monitor covers) because the gap is unrecoverable. `reason` resource deleted: do not mint; see `project.deleted` |
 | close `4009` | Too many sockets on this token: wait, do not discard the token |
 | close `1013` or `4008` | Feed unavailable or the consumer fell behind: back off and reconnect to the same URL with `?after=<last_seq>` (omit `?after=` when `last_seq` is null). Frames from the outage arrive on reconnect; if the reconnect fails past the token's expiry, resync as for `4001` |
 | Monitor stopped itself (too many events) | Reconnect to the same URL with `?after=<last_seq>`; if `spec_file.lock` was in the scope, mint a narrower token |
@@ -101,7 +100,7 @@ A feed can also die with no notice reaching you: a `1006` drop the Monitor does 
 - At every loop step (before integrating, dispatching, or asking the user), call `list_stream_tokens(resource_id: "<project_id>", mine_only: true, live_only: true)`. If the token's `last_connected_at` is older than your current Monitor's start, nothing is connected.
 - After any "background tasks didn't finish before the previous session ended" notice, treat every feed and pull-request Monitor as stopped.
 
-A dead feed whose URL you no longer hold cannot be resumed. Mint a replacement with the same scope, open a Monitor on it, and wait for `stream.ready`. Then resync (`get_spec_file` on every bundle file, `list_attachments` for reports), revoke the old token, and update the registry. When the remaining work needs no spec events (for example a last pull request watched through `gh`), revoke instead and say so.
+A dead feed whose URL you no longer hold cannot be resumed. Mint a replacement with the same scope, open a Monitor on it, and wait for `stream.ready`. Then resync (`get_spec_file` on every bundle file), revoke the old token, and update the registry. When the remaining work needs no spec events (for example a last pull request watched through `gh`), revoke instead and say so.
 
 ## 4. Close
 
@@ -109,4 +108,4 @@ At the end of the run or at a milestone gate: `revoke_stream_token(token_id)`, s
 
 ## Polling fallback (no stream tokens)
 
-Skip the mint. Run the pull-request scripts above (they need only `gh` and `git`). MCP tools cannot be called from a bash Monitor, so spec changes are detected from the manager loop itself: before every integrate and dispatch step, call `get_spec_file` on `tasks.md` and the other bundle files and compare `content_version` with the registry's last-known values; a change triggers the same reactions as the corresponding `spec_file.updated` frame. Worker reports are found with `list_attachments` (0.4.0+) or the pull-request monitor. Everything else in the manager loop stays the same.
+Skip the mint. Run the pull-request scripts above (they need only `gh` and `git`). MCP tools cannot be called from a bash Monitor, so spec changes are detected from the manager loop itself: before every integrate and dispatch step, call `get_spec_file` on `tasks.md` and the other bundle files and compare `content_version` with the registry's last-known values; a change triggers the same reactions as the corresponding `spec_file.updated` frame. Worker reports are on the pull requests (the description, or a comment starting `## Factory report`); the pull-request monitor finds them. Everything else in the manager loop stays the same.

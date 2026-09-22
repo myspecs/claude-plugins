@@ -31,9 +31,8 @@ Write the message so it can be answered without a reply channel: "push a fix", "
 | Signal | How it arrives | Notes |
 |---|---|---|
 | Commits on the branch | `git ls-remote --heads origin 'claude/*'`, `git log origin/<branch>` | First push is not the end; workers keep committing |
-| Pull request and its `## Factory report` | `gh pr list`, `gh pr view <n> --json body,comments` | The contracted hand-back: tests run, deviations, `BLOCKED:` lines |
+| Pull request and its `## Factory report` | `gh pr list`, `gh pr view <n> --json body,comments` | The contracted hand-back: tests run, deviations, `BLOCKED:` lines. It is at the end of the description, and after each later round also in a comment starting `## Factory report`; the newest one is current. Workers never upload it to MySpec |
 | Review replies | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Workers briefed to handle their own review round answer here |
-| MySpec attachment | `factory-<bundle>-task-<N>-report.md` (or `-lane-<L>-report.md`) via the event feed (`watch` skill) | Only when the worker has MySpec tools and a token |
 | Agent-tool completion | Task notification with the agent's final report | `isolation: "remote"` and `isolation: "worktree"` paths only |
 | Session transcript | claude.ai/code/`<session_id>`, or `/tasks` in an interactive session | The manager cannot read it; ask the user when a worker's reasoning matters |
 
@@ -43,7 +42,7 @@ Write the message so it can be answered without a reply channel: "push a fix", "
 |---|---|
 | `Monitor` on `gh pr view` / `git ls-remote` | The wave's board: branch, pull request, checks, review decision, merge state. One watch per wave, re-armed on expiry |
 | `Monitor` on `gh run list` | Post-merge deploy runs on the default branch |
-| MySpec event feed (`watch` skill) | Spec changes, worker report attachments, spec-session completion |
+| MySpec event feed (`watch` skill) | Spec changes and spec-session completion. Worker reports arrive on pull requests, not on the feed |
 | Task notifications | Agent-tool workers and background Bash commands |
 | `ListAgents` | Which cloud sessions exist and whether each is `running` or `idle` right now |
 

@@ -2,6 +2,20 @@
 
 Facts below come from `claude --help` in this build and the Claude Code documentation for cloud sessions, worktrees, and background agents. Verify availability in the current session before relying on a path.
 
+## Choosing a path
+
+Always dispatch to the cloud. The local paths are a fallback, not an equal choice; the order is in the dispatch skill's path table.
+
+- **Why cloud**: each cloud session runs in its own isolated environment, with its own CPU, memory, disk, clone, dependency installs, and build and test runs. Parallel cloud workers never compete for machine resources.
+- **Why not local**: local workers (worktree subagents and `claude --bg` sessions) all run on this machine, next to the manager. A worktree or a sandbox keeps their files apart but not their CPU and memory. Parallel installs, builds and test suites slow every worker and the manager, and can fail on timeouts or out-of-memory kills that look like real test failures. They can also clash on fixed ports, a shared local database, or the Docker daemon.
+- **Parallel work makes the case stronger**: the more work streams a wave or a lane plan runs at once, the more the cloud wins. Never pick local to avoid the cloud set-up steps.
+- **Fall back to local only when**:
+  - the run `policy` has cloud dispatch not allowed;
+  - the user asked for a local worker for this task;
+  - the cloud refused the dispatch for a lasting reason: `isolation: "remote"` refused, the CLI not signed in to claude.ai, the organisation's `allow_remote_sessions` policy off, or GitHub not connected for this repository (the CLI then uploads a bundle instead, and without GitHub access the session cannot push its branch or open a pull request). A timeout or a failed GitHub or network call is not a refusal: retry, or check the state directly, before falling back.
+- **When falling back with more than one worker**: tell the user why the cloud was not used and that the local workers will share this machine, then ask with `AskUserQuestion` whether to lower the concurrency cap or run the workers one at a time.
+- Shared rate limits are not a reason to pick local: local and cloud sessions draw on the same account limits (see Cost).
+
 ## Cloud session via the Agent tool
 
 The Agent tool accepts `isolation: "remote"`, which launches the agent in a remote cloud environment. It always runs in the background and its availability is gated by plan and organisation policy. The completion notification carries the agent's final report; ask the worker to end with its pull request URL so the manager can find it. If the call is refused, fall through to the next path.
@@ -41,9 +55,11 @@ Facts that shape dispatch:
 
 ## Local worktree via the Agent tool
 
-`isolation: "worktree"` gives the subagent its own git worktree; the worktree is cleaned up automatically if it made no changes. Dispatch with `run_in_background: true` (a plain Agent call blocks until the subagent returns) and wait for the completion notification. Several worktree subagents may run at once as long as their files are disjoint.
+Fallback only (see Choosing a path). `isolation: "worktree"` gives the subagent its own git worktree; the worktree is cleaned up automatically if it made no changes. Dispatch with `run_in_background: true` (a plain Agent call blocks until the subagent returns) and wait for the completion notification. Several worktree subagents may run at once as long as their files are disjoint.
 
 ## Local worktree via a background CLI session
+
+Fallback only (see Choosing a path).
 
 ```bash
 cd <clone> && claude --bg "<brief text>" --worktree task-<N> --permission-mode auto   # prompt is POSITIONAL
@@ -116,4 +132,4 @@ Use the tested scripts in the `watch` skill's `scripts/` directory (`pr-watch.sh
 
 ## Cost
 
-Every parallel session consumes rate limit from the same account. State the number of sessions and expected sizes before each wave, keep the concurrency cap, and prefer fewer, well-briefed sessions over many thin ones.
+Every parallel session consumes rate limit from the same account. State the number of sessions and expected sizes before each wave, keep the concurrency cap, and prefer fewer, well-briefed sessions over many thin ones. Local workers draw on the same account limits, so this cost never tilts the choice toward local; local workers add the cost of sharing this machine on top.
