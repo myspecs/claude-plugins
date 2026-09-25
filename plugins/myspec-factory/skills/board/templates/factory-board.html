@@ -1,0 +1,567 @@
+<title>Factory board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Factory board template (myspec-factory, protocol factory-board/1).
+     One board per repository, reused by every run. Read-only view of the board database;
+     the manager and workers write it with ArtifactData, and the manager cleans it.
+     Protocol: the board skill (skills/board/SKILL.md). The manager changes only <title> when publishing. */
+  :root {
+    --bg: #eef1f0;
+    --surface: #ffffff;
+    --surface-2: #f6f8f7;
+    --ink: #17201e;
+    --muted: #59655f;
+    --line: #d3dad7;
+    --sfm: #1f5fa8;
+    --sfm-soft: #e3edf8;
+    --worker: #23775a;
+    --worker-soft: #e1f1ea;
+    --owner: #a85400;
+    --owner-soft: #fbeedd;
+    --bad: #b3261e;
+    --bad-soft: #fbe5e3;
+    --ok: #2e7d32;
+    --warn: #8a6100;
+    --warn-soft: #fbf1d6;
+    --focus: #1f5fa8;
+    --display: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111615;
+      --surface: #192120;
+      --surface-2: #1f2827;
+      --ink: #e3eae7;
+      --muted: #97a39f;
+      --line: #2d3836;
+      --sfm: #86b4f0;
+      --sfm-soft: #1b2b40;
+      --worker: #6cc59e;
+      --worker-soft: #16302a;
+      --owner: #f0a24f;
+      --owner-soft: #3a2812;
+      --bad: #f28b82;
+      --bad-soft: #3d1c1a;
+      --ok: #81c784;
+      --warn: #e6c05c;
+      --warn-soft: #3a3016;
+      --focus: #86b4f0;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111615;
+    --surface: #192120;
+    --surface-2: #1f2827;
+    --ink: #e3eae7;
+    --muted: #97a39f;
+    --line: #2d3836;
+    --sfm: #86b4f0;
+    --sfm-soft: #1b2b40;
+    --worker: #6cc59e;
+    --worker-soft: #16302a;
+    --owner: #f0a24f;
+    --owner-soft: #3a2812;
+    --bad: #f28b82;
+    --bad-soft: #3d1c1a;
+    --ok: #81c784;
+    --warn: #e6c05c;
+    --warn-soft: #3a3016;
+    --focus: #86b4f0;
+  }
+  body { background: var(--bg); color: var(--ink); font: 400 14px/1.5 var(--body); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 28px; }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.1; }
+  h2 { font-size: 15px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  h3 { font-size: 18px; font-weight: 600; }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .muted { color: var(--muted); }
+  a { color: var(--sfm); }
+  button { font: 500 13px/1 var(--body); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  select { font: 400 13px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+
+  .top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; border-bottom: 2px solid var(--ink); padding-bottom: 16px; }
+  .eyebrow { font: 500 12px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .title-block { display: grid; gap: 6px; }
+  .run-line { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+  .count { display: grid; gap: 2px; min-width: 88px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  .count dt { font: 500 11px var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .count dd { margin: 0; font: 600 22px var(--display); font-variant-numeric: tabular-nums; }
+  .count.alert dd { color: var(--owner); }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--body); padding: 3px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); white-space: nowrap; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .pill.running::before, .pill.pr-open::before, .pill.pushed::before { background: var(--sfm); }
+  .pill.merged::before, .pill.closed::before { background: var(--ok); }
+  .pill.blocked, .pill.failed { background: var(--bad-soft); border-color: transparent; color: var(--bad); }
+  .pill.blocked::before, .pill.failed::before { background: var(--bad); }
+  .pill.redispatched::before { background: var(--warn); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  .legend p { margin: 0; max-width: 62ch; color: var(--muted); }
+  .who { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--body); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+  .who.sfm { color: var(--sfm); background: var(--sfm-soft); }
+  .who.worker { color: var(--worker); background: var(--worker-soft); }
+  .who.owner { color: var(--owner); background: var(--owner-soft); }
+  .who.bad { color: var(--bad); background: var(--bad-soft); }
+
+  section { display: grid; gap: 12px; }
+  .queue { display: grid; gap: 10px; }
+  .q { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-left: 4px solid var(--owner); border-radius: 8px; background: var(--surface); }
+  .q.for-sfm { border-left-color: var(--sfm); }
+  .q-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+  .q-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 80ch; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; align-items: start; }
+  .card { display: grid; gap: 12px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .card.is-blocked { border-color: var(--bad); }
+  .card-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+  .card-id { display: grid; gap: 4px; min-width: 0; }
+  .card-id h3 { overflow-wrap: anywhere; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+  .facts dt { color: var(--muted); font-size: 12.5px; }
+  .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .phases { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
+  .phase { height: 6px; border-radius: 2px; background: var(--line); }
+  .phase.done { background: var(--worker); }
+  .phase.now { background: var(--sfm); }
+  .card.is-blocked .phase.now { background: var(--bad); }
+  .phase-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .next { margin: 0; padding: 8px 10px; background: var(--sfm-soft); border-radius: 6px; font-size: 13px; }
+  .next strong { color: var(--sfm); font-weight: 600; }
+  .open-q { margin: 0; padding: 8px 10px; background: var(--owner-soft); border-radius: 6px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  details { border-top: 1px solid var(--line); padding-top: 10px; }
+  summary { cursor: pointer; font-weight: 500; }
+  pre.report { margin: 10px 0 0; padding: 12px; background: var(--surface-2); border-radius: 6px; font: 400 12.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
+  .card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+
+  .log-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .entry { display: grid; gap: 6px; padding: 12px 14px; border-top: 1px solid var(--line); }
+  .entry:first-child { border-top: 0; }
+  .entry-head { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .arrow { color: var(--muted); }
+  .kind { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
+  .kind.question { color: var(--owner); border-color: var(--owner); }
+  .kind.decision { color: var(--sfm); border-color: var(--sfm); }
+  .entry-meta { margin-left: auto; display: flex; gap: 10px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .entry-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 90ch; }
+  .quote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--owner); color: var(--ink); background: var(--owner-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .history li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+  .history .h-summary { color: var(--muted); overflow-wrap: anywhere; }
+  .empty { padding: 18px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 10px; }
+  .notice { padding: 12px 14px; border-radius: 8px; background: var(--warn-soft); color: var(--ink); }
+  @media (max-width: 520px) { h1 { font-size: 24px; } .entry-meta { margin-left: 0; width: 100%; } }
+  @media (prefers-reduced-motion: no-preference) { .card, .q { transition: border-color 160ms ease; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="title-block">
+      <span class="eyebrow">MySpec software factory · board</span>
+      <h1 id="bundle-name">Factory board</h1>
+      <div class="run-line">
+        <span class="pill" id="run-status">loading</span>
+        <span class="mono muted" id="run-repo"></span>
+        <span class="muted" id="run-updated"></span>
+      </div>
+    </div>
+    <dl class="counts" aria-label="Run summary">
+      <div class="count"><dt>Workers</dt><dd id="c-workers">0</dd></div>
+      <div class="count"><dt>Blocked</dt><dd id="c-blocked">0</dd></div>
+      <div class="count alert"><dt>Waiting on you</dt><dd id="c-owner">0</dd></div>
+      <div class="count"><dt>Earlier runs</dt><dd id="c-history">0</dd></div>
+    </dl>
+  </header>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <div class="legend" id="legend" aria-label="Who wrote what" data-comment-target>
+    <span class="who sfm">Manager</span>
+    <span class="who worker">Worker</span>
+    <span class="who owner">Owner</span>
+    <p>Workers and the manager write the log below. Your comments go to the manager: use <strong>Send to Claude</strong> to reach it right away; a plain comment is read at its next check. The manager passes your decisions on to the workers. Comment on a worker's card to talk about that worker.</p>
+    <span id="legend-comment"></span>
+  </div>
+
+  <section id="owner-section" aria-labelledby="owner-h" hidden>
+    <h2 id="owner-h">Waiting on you</h2>
+    <div class="queue" id="owner-queue"></div>
+  </section>
+
+  <section aria-labelledby="workers-h">
+    <h2 id="workers-h">Workers</h2>
+    <div class="cards" id="cards"></div>
+    <div class="empty" id="cards-empty">No workers yet. Each worker gets a card here as soon as the manager dispatches it.</div>
+  </section>
+
+  <section aria-labelledby="log-h">
+    <div class="log-head">
+      <h2 id="log-h">Message log</h2>
+      <label class="muted">Show
+        <select id="log-filter"><option value="">every worker</option></select>
+      </label>
+    </div>
+    <ol class="log" id="log"></ol>
+    <div class="empty" id="log-empty">No messages yet.</div>
+  </section>
+
+  <section id="history-section" aria-labelledby="history-h" hidden>
+    <h2 id="history-h">Earlier runs</h2>
+    <ol class="history" id="history"></ol>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var PHASES = ["dispatched", "started", "task-done", "pr-open", "review-round", "final"];
+  var state = { meta: null, board: {}, reports: {}, mail: {}, cursors: {} };
+  var comments = null;
+  var openReports = {};
+  var $ = function (id) { return document.getElementById(id); };
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+  function slug(id) { return String(id).replace(/[^A-Za-z0-9_-]/g, "-"); }
+  function ago(iso) {
+    if (!iso) return "";
+    var t = Date.parse(iso);
+    if (isNaN(t)) return "";
+    var s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.round(s / 60) + " min ago";
+    if (s < 86400) return Math.round(s / 3600) + " h ago";
+    return new Date(t).toISOString().slice(0, 10);
+  }
+  function party(id) {
+    if (id === "sfm") return { cls: "sfm", label: "Manager" };
+    if (id === "all-workers") return { cls: "worker", label: "All workers" };
+    return { cls: "worker", label: String(id || "?") };
+  }
+  function whoChip(id) {
+    var p = party(id);
+    return el("span", "who " + p.cls, p.label);
+  }
+  function prLink(pr) {
+    if (!pr) return null;
+    var repo = state.meta && state.meta.repo;
+    if (repo && /^[\w.-]+\/[\w.-]+$/.test(repo)) {
+      var a = el("a", "mono", "#" + pr);
+      a.href = "https://github.com/" + repo + "/pull/" + encodeURIComponent(pr);
+      a.target = "_blank";
+      a.rel = "noopener";
+      return a;
+    }
+    return el("span", "mono", "#" + pr);
+  }
+
+  // Every message entry from every mailbox, with its mailbox id and a check that its key
+  // matches the mailbox's key (the manager sets the mailbox key at dispatch).
+  function allEntries() {
+    var out = [];
+    Object.keys(state.mail).forEach(function (mid) {
+      var box = state.mail[mid] || {};
+      var msgs = box.messages || {};
+      Object.keys(msgs).forEach(function (k) {
+        var m = msgs[k] || {};
+        out.push({
+          mailbox: mid, from: box.from, to: box.to, seq: Number(m.seq || k),
+          ref: mid + "#" + Number(m.seq || k), m: m,
+          verified: !!box.key && m.key === box.key
+        });
+      });
+    });
+    return out;
+  }
+  function answeredRefs(entries) {
+    var set = {};
+    entries.forEach(function (e) { if (e.m.re) set[e.m.re] = true; });
+    return set;
+  }
+  function hasRead(agent, e) {
+    var c = state.cursors[agent];
+    return !!(c && c.reads && Number(c.reads[e.mailbox]) >= e.seq);
+  }
+  function readLabel(e) {
+    if (e.to !== "all-workers") return hasRead(e.to, e) ? "read" : "unread";
+    var ids = Object.keys(state.board);
+    var n = ids.filter(function (id) { return hasRead(id, e); }).length;
+    return "read by " + n + "/" + ids.length;
+  }
+
+  function renderHeader(entries, openQs) {
+    var meta = state.meta || {};
+    if (meta.bundle) {
+      $("bundle-name").textContent = meta.bundle;
+    }
+    var st = $("run-status");
+    st.textContent = meta.status || "no run data";
+    st.className = "pill " + (meta.status || "");
+    $("run-repo").textContent = meta.repo || "";
+    $("run-updated").textContent = meta.updated_at ? "updated " + ago(meta.updated_at) : "";
+    var ids = Object.keys(state.board);
+    $("c-workers").textContent = ids.length;
+    $("c-blocked").textContent = ids.filter(function (id) {
+      var b = state.board[id] || {}, r = state.reports[id] || {};
+      return b.status === "blocked" || r.phase === "blocked";
+    }).length;
+    $("c-history").textContent = Array.isArray(meta.history) ? Math.min(meta.history.length, 20) : 0;
+    $("c-owner").textContent = openQs.filter(function (e) { return e.m.needs === "owner"; }).length;
+  }
+
+  function commentButton(target, label) {
+    var b = el("button", "comment-btn", label || "Comment");
+    b.type = "button";
+    b.hidden = !comments;
+    b.addEventListener("click", function () {
+      if (!comments) return;
+      comments.openComposer({ element: target }).catch(function (err) {
+        if (err && (err.code === "unavailable" || err.code === "not_granted" || err.code === "capability_disabled")) {
+          comments = null;
+          document.querySelectorAll(".comment-btn").forEach(function (x) { x.hidden = true; });
+        }
+      });
+    });
+    return b;
+  }
+
+  function renderQueue(openQs) {
+    var box = $("owner-queue");
+    box.textContent = "";
+    var mine = openQs.filter(function (e) { return e.m.needs === "owner"; });
+    $("owner-section").hidden = mine.length === 0;
+    mine.forEach(function (e) {
+      var q = el("article", "q");
+      q.id = "q-" + slug(e.ref);
+      q.setAttribute("data-comment-target", "");
+      var head = el("div", "q-head");
+      var left = el("div", "entry-head");
+      left.appendChild(whoChip(e.from));
+      left.appendChild(el("span", "kind question", "question"));
+      if (e.m.tasks && e.m.tasks.length) left.appendChild(el("span", "muted", "task " + e.m.tasks.join(", ")));
+      head.appendChild(left);
+      head.appendChild(commentButton(q, "Answer in a comment"));
+      q.appendChild(head);
+      q.appendChild(el("p", "q-text", e.m.text || ""));
+      q.appendChild(el("span", "mono muted", e.ref + " · " + ago(e.m.at)));
+      box.appendChild(q);
+    });
+  }
+
+  function renderCards(entries, openQs) {
+    var box = $("cards");
+    box.textContent = "";
+    var ids = Object.keys(state.board).sort();
+    $("cards-empty").hidden = ids.length > 0;
+    ids.forEach(function (id) {
+      var b = state.board[id] || {}, r = state.reports[id] || {};
+      var blocked = b.status === "blocked" || r.phase === "blocked";
+      var card = el("article", "card" + (blocked ? " is-blocked" : ""));
+      card.id = "card-" + slug(id);
+      card.setAttribute("data-comment-target", "");
+
+      var head = el("div", "card-head");
+      var idb = el("div", "card-id");
+      idb.appendChild(el("span", "mono muted", id));
+      idb.appendChild(el("h3", "", b.title || ("tasks " + (b.tasks || []).join(", "))));
+      head.appendChild(idb);
+      var pill = el("span", "pill " + (b.status || ""), b.status || "unknown");
+      head.appendChild(pill);
+      card.appendChild(head);
+
+      var phase = r.phase || "dispatched";
+      // A blocked worker keeps its place on the bar: judged from what it has delivered so far.
+      var reached = phase !== "blocked" ? phase : r.pr ? "pr-open" : (r.tasks_done || []).length ? "task-done" : "started";
+      var idx = PHASES.indexOf(reached);
+      var bar = el("div", "phases");
+      bar.setAttribute("role", "img");
+      bar.setAttribute("aria-label", "Phase: " + phase);
+      PHASES.forEach(function (p, i) {
+        bar.appendChild(el("span", "phase" + (i < idx ? " done" : i === idx ? " now" : "")));
+      });
+      card.appendChild(bar);
+      var pl = el("div", "phase-label");
+      pl.appendChild(el("span", "", "phase: " + phase));
+      pl.appendChild(el("span", "", r.updated_at ? ago(r.updated_at) : ""));
+      card.appendChild(pl);
+
+      var facts = el("dl", "facts");
+      function fact(k, v) {
+        if (v === null || v === undefined || v === "") return;
+        facts.appendChild(el("dt", "", k));
+        var dd = el("dd");
+        if (v instanceof Node) dd.appendChild(v); else dd.textContent = String(v);
+        facts.appendChild(dd);
+      }
+      fact("Tasks", (b.tasks || r.tasks || []).join(", "));
+      fact("Done", (r.tasks_done || []).join(", ") || "none yet");
+      fact("Branch", r.branch || b.branch ? el("span", "mono", r.branch || b.branch) : null);
+      fact("Head", r.head_sha ? el("span", "mono", String(r.head_sha).slice(0, 10)) : null);
+      fact("Pull request", prLink(r.pr || b.pr));
+      if (b.session_url && /^https:\/\/claude\.ai\//.test(b.session_url)) {
+        var s = el("a", "", "open session");
+        s.href = b.session_url; s.target = "_blank"; s.rel = "noopener";
+        fact("Session", s);
+      }
+      fact("Verified", b.verified_sha ? el("span", "mono", String(b.verified_sha).slice(0, 10)) : null);
+      card.appendChild(facts);
+
+      if (b.next) {
+        var nx = el("p", "next");
+        nx.appendChild(el("strong", "", "Manager next: "));
+        nx.appendChild(document.createTextNode(b.next));
+        card.appendChild(nx);
+      }
+      openQs.filter(function (e) { return e.from === id; }).forEach(function (e) {
+        card.appendChild(el("p", "open-q", "Open question (" + (e.m.needs || "sfm") + "): " + (e.m.text || "")));
+      });
+
+      if (r.report) {
+        var d = el("details");
+        d.open = !!openReports[id];
+        d.addEventListener("toggle", function () { openReports[id] = d.open; });
+        d.appendChild(el("summary", "", r.phase === "final" ? "Final Factory report (copy of the PR)" : "Latest Factory report"));
+        d.appendChild(el("pre", "report", r.report));
+        card.appendChild(d);
+      }
+      var actions = el("div", "card-actions");
+      actions.appendChild(el("span", "muted", entries.filter(function (e) { return e.from === id || e.to === id; }).length + " messages"));
+      actions.appendChild(commentButton(card));
+      card.appendChild(actions);
+      box.appendChild(card);
+    });
+  }
+
+  function renderFilter() {
+    var sel = $("log-filter");
+    var cur = sel.value;
+    var ids = Object.keys(state.board).sort();
+    while (sel.options.length > 1) sel.remove(1);
+    ids.forEach(function (id) {
+      var o = el("option", "", id);
+      o.value = id;
+      sel.appendChild(o);
+    });
+    sel.value = ids.indexOf(cur) >= 0 ? cur : "";
+  }
+
+  function renderLog(entries) {
+    var list = $("log");
+    list.textContent = "";
+    var f = $("log-filter").value;
+    var shown = entries.filter(function (e) {
+      return !f || e.from === f || e.to === f || e.to === "all-workers";
+    }).sort(function (a, b) {
+      return String(b.m.at || "").localeCompare(String(a.m.at || "")) || b.seq - a.seq;
+    }).slice(0, 300);
+    $("log-empty").hidden = shown.length > 0;
+    shown.forEach(function (e) {
+      var li = el("li", "entry");
+      var head = el("div", "entry-head");
+      head.appendChild(whoChip(e.from));
+      head.appendChild(el("span", "arrow", "→"));
+      head.appendChild(whoChip(e.to));
+      head.appendChild(el("span", "kind " + (e.m.kind || ""), e.m.kind || "note"));
+      if (e.m.origin) head.appendChild(el("span", "who owner", "Owner's words, relayed"));
+      if (!e.verified) head.appendChild(el("span", "who bad", "Unverified sender"));
+      var meta = el("span", "entry-meta");
+      meta.appendChild(el("span", "mono", e.ref));
+      if (e.m.re) meta.appendChild(el("span", "mono", "re " + e.m.re));
+      meta.appendChild(el("span", "", readLabel(e)));
+      meta.appendChild(el("span", "", ago(e.m.at)));
+      head.appendChild(meta);
+      li.appendChild(head);
+      if (e.m.origin && e.m.origin.owner_text) li.appendChild(el("p", "quote", e.m.origin.owner_text));
+      li.appendChild(el("p", "entry-text", e.m.text || ""));
+      list.appendChild(li);
+    });
+  }
+
+  function renderHistory() {
+    var list = $("history");
+    list.textContent = "";
+    var h = (state.meta && Array.isArray(state.meta.history)) ? state.meta.history.slice(-20).reverse() : [];
+    $("history-section").hidden = h.length === 0;
+    h.forEach(function (r) {
+      var li = el("li");
+      li.appendChild(el("strong", "", (r && r.bundle) || "run"));
+      li.appendChild(el("span", "mono muted", (r && r.closed_at) ? String(r.closed_at).slice(0, 10) : ""));
+      li.appendChild(el("span", "h-summary", (r && r.summary) || ""));
+      list.appendChild(li);
+    });
+  }
+
+  var pending = false;
+  function render() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () {
+      pending = false;
+      var entries = allEntries();
+      var done = answeredRefs(entries);
+      var openQs = entries.filter(function (e) { return e.m.kind === "question" && !done[e.ref]; });
+      renderHeader(entries, openQs);
+      renderQueue(openQs);
+      renderCards(entries, openQs);
+      renderFilter();
+      renderLog(entries);
+      renderHistory();
+    });
+  }
+  $("log-filter").addEventListener("change", render);
+
+  function notice(text) {
+    var n = $("notice");
+    n.textContent = text;
+    n.hidden = false;
+  }
+  function byId(snap) {
+    var out = {};
+    snap.docs.forEach(function (d) { if (d.exists) out[d.id] = d.data(); });
+    return out;
+  }
+  function onErr() { notice("The board lost its live connection to the run data. Reload the page to reconnect."); }
+
+  render();
+  var use = window.claude && typeof window.claude.use === "function" ? window.claude.use.bind(window.claude) : null;
+  if (!use) {
+    notice("Open this board on claude.ai to see the live run.");
+    return;
+  }
+  $("legend-comment").appendChild(commentButton($("legend"), "Comment to the manager"));
+  use("comments").then(function (c) {
+    comments = c;
+    document.querySelectorAll(".comment-btn").forEach(function (x) { x.hidden = !comments; });
+  }).catch(function () { comments = null; });
+  use("db").then(function (db) {
+    if (!db) {
+      notice("This view cannot read the board's data. Open it on claude.ai while signed in to the account that runs the factory.");
+      $("run-status").textContent = "unavailable";
+      return;
+    }
+    db.doc("run/meta").onSnapshot(function (s) { state.meta = s.exists ? s.data() : null; render(); }, onErr);
+    db.collection("board").onSnapshot(function (s) { state.board = byId(s); render(); }, onErr);
+    db.collection("reports").onSnapshot(function (s) { state.reports = byId(s); render(); }, onErr);
+    db.collection("mail").onSnapshot(function (s) { state.mail = byId(s); render(); }, onErr);
+    db.collection("cursors").onSnapshot(function (s) { state.cursors = byId(s); render(); }, onErr);
+  }).catch(function () {
+    notice("This view cannot read the board's data right now. Reload the page to try again.");
+  });
+  setInterval(render, 60000);
+})();
+</script>

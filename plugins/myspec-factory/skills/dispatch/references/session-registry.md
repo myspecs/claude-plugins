@@ -1,6 +1,6 @@
 # Session registry
 
-Every worker session the manager starts is recorded in a local registry so the manager can find the session id again to steer, check, or teleport it. The registry is a cache of dispatch facts, never the board: task status still comes from `tasks.md` checkboxes and pull requests.
+Every worker session the manager starts is recorded in a local registry so the manager can find the session id again to steer, check, or teleport it. The registry is a cache of dispatch facts, never the task board: task status still comes from `tasks.md` checkboxes and pull requests.
 
 ## Location
 
@@ -25,6 +25,8 @@ Every worker session the manager starts is recorded in a local registry so the m
       "status": "running",
       "pr": null,
       "autofix": "unknown",
+      "worker_id": "w:tasks-4-5-7",
+      "worker_key": "f56fe75a",
       "notes": ""
     }
   ]
@@ -38,6 +40,7 @@ Every worker session the manager starts is recorded in a local registry so the m
 - `session_id`: the cloud session id (`session_...` or `cse_...`), the background agent id, or the `claude --bg` id. Store the bare id; the `View:` line's query string (`?from=cli&m=0`) is dropped when saving the URL.
 - `status`: `running`, `pushed` (branch seen, no pull request yet), `pr-open`, `blocked`, `merged`, `failed`, `redispatched`.
 - `autofix`: `on` once the worker (or the manager) enabled Auto-fix for the pull request, `unavailable` with the reason in `notes`, `unknown` before a pull request exists.
+- `worker_id`, `worker_key`: the worker's identity on the factory board (the `board` skill). The id is `w:` plus the branch suffix (`w:tasks-4-5-7`, `w:task-12`, `w:lane-2`), with `.r2`, `.r3` on a redispatch; the key is an identifier from `registry.py new-key`, not a secret. Absent when the run has no board.
 - Append a new entry on redispatch rather than overwriting; set the old entry's status to `redispatched`.
 
 ## Run policy and contract notes
@@ -63,6 +66,21 @@ The run-start answers live under a top-level `policy` key; `dispatch` and `integ
 - `reviewer`: the bare GitHub login whose approval gates the merge (it is passed to `pr-watch.sh --reviewer`). Keep any explanation elsewhere, for example in `contract_notes`.
 - `minor_defaults`: `owner` (default: every doubt and worker deviation goes to the owner) or `manager`. With `manager`, the manager decides doubts and deviations that are low-impact UX or implementation details — wording and labels, ordering and tie-break rules, counting conventions, test-only choices — and change no API or wire shape, data model, security or authorization, requirement scope, or user-visible flow. It records each as a numbered Clarification marked `(manager default, owner may reverse)`, relays it to the worker, and lists them in the next report and in the milestone summary. Anything else still goes to the owner.
 - Each session entry also carries `verified_sha`: the head the manager's last verification pass covered. `integrate`'s ready-to-merge gate compares it with the pull request's head.
+
+## Factory board
+
+`artifact` records the repository's factory board for this run (the `board` skill), written by `registry.py … artifact` when a run starts on the board:
+
+```json
+"artifact": {
+  "url": "https://claude.ai/artifact/<id>",
+  "published_at": "2026-09-12T13:00:00Z",
+  "run_key": "31422ef8",
+  "protocol": "factory-board/1"
+}
+```
+
+`published_at` is when this run started on the board (the board itself may be much older). The run key is the manager's identifier on the board (every `sfm` message entry carries it). Each new run passes a fresh `--run-key`; an `artifact` call without it keeps the key, which is what a resumed run needs, because live workers accept only the key in their brief. The board URL is a private claude.ai link, not a credential, and goes into every brief. One board serves every bundle of the repository. Its durable home is the managed block in the repository's `CLAUDE.md` (`registry.py … claude-md`, committed with the user's agreement); `artifact` also writes `.specs/factory-board.json` (`url`, `last_bundle`) as a local fallback. `registry.py … board` prints the URL to reuse from the block, else this registry, else that file, and names its source on stderr.
 
 ## Stream token (never the URL)
 
@@ -132,8 +150,13 @@ python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>
 | Subcommand | Does |
 |---|---|
 | `show` | Print the registry |
-| `add-session --task --title --path --session-id --url --branch --started-at [--notes]` | Append a session entry with `status: running` |
-| `set --session <index, last, task list or task> key=value…` | Update `status`, `pr`, `branch`, `autofix`, `verified_sha`, `agent_name` or `cloud_title` |
+| `add-session --task --title --path --session-id --url --branch --started-at [--notes] [--worker-id --worker-key]` | Append a session entry with `status: running`; a `--worker-id` without `--worker-key` gets a fresh key |
+| `set --session <index, last, task list or task> key=value…` | Update `status`, `pr`, `branch`, `autofix`, `verified_sha`, `agent_name`, `cloud_title`, `worker_id` or `worker_key` |
+| `artifact --url --published-at [--run-key]` | Record the repository's factory board for this run and in `.specs/factory-board.json`; prints the run key |
+| `board` | Print the board URL to reuse (the `CLAUDE.md`/`AGENTS.md` board block, else this registry, else `.specs/factory-board.json`; source on stderr); exit 1 when none. The registry file need not exist yet |
+| `claude-md --url [--target]` | Write or replace the board block in the repository's `CLAUDE.md` (`AGENTS.md` when only that exists; created when neither does), never touching text outside the markers. Committing it is a separate step the user agrees to |
+| `whois --from <id> --key <key>` | Check a board message's sender against the registry: prints `sfm` or the session; exit 1 on a mismatch |
+| `new-key` | Print a fresh worker key (no `--file` needed) |
 | `note --session <index, last, task list or task> "text"` | Append to the entry's `notes` |
 | `stream --token-id --prefix --expires-at [--revoked-at]` | Record the stream token (never the URL) |
 | `stream-seq N` | Record `stream.last_seq` |
@@ -145,7 +168,7 @@ python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>
 
 ## Using the registry
 
-- Steer: look up the entry whose `task` list holds the task; with Remote Control connected, `SendMessage` to `agent_name` (confirm it in `ListAgents` first); otherwise `claude -p "<message>" --cloud <session_id>`. Record what was sent and how in `notes`.
+- Steer: look up the entry whose `task` list holds the task; with a board, write the message into `mail/sfm~<worker_id>` first and send only its doorbell. With Remote Control connected, `SendMessage` to `agent_name` (confirm it in `ListAgents` first); otherwise `claude -p "<message>" --cloud <session_id>`. Record what was sent and how in `notes`.
 - Check: open `url`, or `/tasks` in an interactive session; `claude --teleport <session_id>` to pull the branch locally.
 - Integrate: match pull requests to entries by `branch` or by the task numbers in the title (`task 4, 5, 7:`); set `pr` and `status`.
 - Resume after a manager restart: read the registry first; entries with `status: "running"` are sessions to check before dispatching anything new.

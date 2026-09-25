@@ -1,6 +1,6 @@
 # Channels to a worker session
 
-Every way the manager can send to, hear from, watch, or take over a worker, and what each one actually proves. Cloud sessions are one-way: they receive messages and cannot answer the manager, so every answer arrives as a commit, a pull-request reply, an attachment, or a session transcript the user reads.
+Every way the manager can send to, hear from, watch, or take over a worker, and what each one actually proves. A cloud session receives messages but cannot message the manager back. Its answers arrive on the repository's factory board (the `board` skill), as a commit, a pull-request reply, or in a session transcript the user reads.
 
 ## Send to a worker
 
@@ -8,8 +8,9 @@ Every way the manager can send to, hear from, watch, or take over a worker, and 
 |---|---|---|---|
 | Remote Control message | `SendMessage` to the row's name from `ListAgents` | Manager connected to Remote Control (`claude --remote-control "factory <bundle>"` or `/remote-control`); worker listed as `cloud` | Delivery to the session only. Not that it was read or acted on — new commits or replies are the proof |
 | CLI steer | `cd <clone> && claude -p "<message>" --cloud <session_id>` | Session id from `.specs/<bundle>/factory-sessions.json` | Same: one message queued, then the command exits |
+| Board message + doorbell | An entry in `mail/sfm~<worker id>` (answer, decision, relay, steer), then a one-line `SendMessage` or `claude -p` naming it | The repository's factory board, and a worker whose report does not say `- Board: unavailable` | Durable. The worker's `cursors/<worker id>` moving past the entry proves it was read; its `ack` entry proves it acted |
 | Pull-request review | `gh pr review`, `gh pr comment`, inline comments | The worker's pull request exists and its brief told it to watch reviews | Durable, and the worker can answer in the same place |
-| Redispatch | A new session with the failure output added to the brief | — | Use only when the session has ended, expired, or reported `BLOCKED` |
+| Redispatch | A new session with the failure output added to the brief | — | Use only when the session has ended, expired, or reported `BLOCKED` on its pull request; a question on the board keeps the session |
 
 ## Auto-fix on the pull request
 
@@ -24,7 +25,7 @@ Claude Code's Auto-fix subscribes a cloud session to the pull request's GitHub e
 
 Facts that matter to the manager: Auto-fix needs the Claude GitHub App installed on the repository (the `setup` skill checks this); it is a per-pull-request toggle, cleared from the same CI status bar; it does not react to merge conflicts caused by an advancing base branch, so a rebase is still asked for explicitly; and its review replies post under the account's GitHub user, labelled as Claude Code. In a repository where a pull-request comment can trigger deploys or other privileged automation, tell the user before enabling it. Auto-fix never merges, and neither does anything else the manager arms: auto-merge is forbidden in every form — `gh pr merge --auto`, GitHub's auto-merge toggle, merge queues — because the decision to merge belongs to the manager under the agreed policy, or to the user. Record `autofix: on` (or why not) in the registry entry.
 
-Write the message so it can be answered without a reply channel: "push a fix", "reply on the review thread", "put `BLOCKED: <reason>` as a pull-request comment". Record what was sent, and on which channel, in the registry entry's `notes`.
+Put the content on the board and send only the doorbell when the run has a board. Otherwise write the message so it can be answered without a reply channel: "push a fix", "reply on the review thread", "put `BLOCKED: <reason>` as a pull-request comment". Record what was sent, and on which channel, in the registry entry's `notes`.
 
 ## Hear from a worker
 
@@ -32,6 +33,7 @@ Write the message so it can be answered without a reply channel: "push a fix", "
 |---|---|---|
 | Commits on the branch | `git ls-remote --heads origin 'claude/*'`, `git log origin/<branch>` | First push is not the end; workers keep committing |
 | Pull request and its `## Factory report` | `gh pr list`, `gh pr view <n> --json body,comments` | The contracted hand-back: tests run, deviations, `BLOCKED:` lines. It is at the end of the description, and after each later round also in a comment starting `## Factory report`; the newest one is current. Workers never upload it to MySpec |
+| Factory board | `ArtifactData` on `mail/<worker id>~sfm` and `reports/<worker id>` (the `board` skill §5) | Progress at every checkpoint, questions asked mid-work, and a copy of the Factory report, before and after the pull request exists. Nothing wakes the manager when a worker writes: read it at every loop step and on every `board-tick.sh` line. The pull-request report still decides the merge |
 | Review replies | `gh api repos/{owner}/{repo}/pulls/<n>/comments` | Workers briefed to handle their own review round answer here |
 | Agent-tool completion | Task notification with the agent's final report | `isolation: "remote"` and `isolation: "worktree"` paths only |
 | Session transcript | claude.ai/code/`<session_id>`, or `/tasks` in an interactive session | The manager cannot read it; ask the user when a worker's reasoning matters |
@@ -40,9 +42,11 @@ Write the message so it can be answered without a reply channel: "push a fix", "
 
 | Mechanism | Use |
 |---|---|
-| `Monitor` on `gh pr view` / `git ls-remote` | The wave's board: branch, pull request, checks, review decision, merge state. One watch per wave, re-armed on expiry |
+| `Monitor` on `gh pr view` / `git ls-remote` | Each worker's branch, pull request, checks, review decision and merge state. One watch per wave, re-armed on expiry |
 | `Monitor` on `gh run list` | Post-merge deploy runs on the default branch |
-| MySpec event feed (`watch` skill) | Spec changes and spec-session completion. Worker reports arrive on pull requests, not on the feed |
+| MySpec event feed (`watch` skill) | Spec changes and spec-session completion. Worker reports arrive on pull requests and the factory board, not on the feed |
+| `Monitor` on `board-tick.sh` | A line every few minutes while workers run: the cue to read the factory board, which wakes nobody by itself |
+| Board comment watch | Set up at every run start and after a restart (`board` skill §3): the owner's **Send to Claude** on a board comment wakes the manager. Plain comments, resolves and worker writes do not |
 | Task notifications | Agent-tool workers and background Bash commands |
 | `ListAgents` | Which cloud sessions exist and whether each is `running` or `idle` right now |
 

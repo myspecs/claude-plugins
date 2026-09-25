@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Build or refresh the factory wave plan from a MySpec tasks.md, or write the tasks.md a brownfield bundle lacks. Use when the user says "plan the factory run", "what can run in parallel", "build the waves", "which tasks are ready", "plan the tasks for this proposal", or before dispatching workers. Derives the board from platform checkboxes and open pull requests, groups related tasks (dependency chains, shared files or modules, the same requirement) into one worker each, and builds waves of those groups; when the bundle has no tasks.md, plans the whole change into lanes sized to the change (one worker for a small change, up to 3 parallel lanes for a large one; one branch each) and uploads the list only after the user approves it.
+description: Build or refresh the factory wave plan from a MySpec tasks.md, or write the tasks.md a brownfield bundle lacks. Use when the user says "plan the factory run", "what can run in parallel", "build the waves", "which tasks are ready", "plan the tasks for this proposal", or before dispatching workers. Derives the task board from platform checkboxes and open pull requests, groups related tasks (dependency chains, shared files or modules, the same requirement) into one worker each, and builds waves of those groups; when the bundle has no tasks.md, plans the whole change into lanes sized to the change (one worker for a small change, up to 3 parallel lanes for a large one; one branch each) and uploads the list only after the user approves it.
 user-invocable: false
 ---
 
@@ -49,7 +49,7 @@ A MySpec brownfield bundle may be only `proposal.md` and a requirements delta; `
 
 Bundles that arrive with their own `tasks.md` keep the wave planning below; do not re-plan them into lanes unless the user asks.
 
-## 2. Derive the board
+## 2. Derive the task board
 
 | Status | Source of truth |
 |---|---|
@@ -59,7 +59,7 @@ Bundles that arrive with their own `tasks.md` keep the wave planning below; do n
 | ready | `- [ ]`, not in flight, every `_Dependencies:_` number done |
 | waiting | `- [ ]` with an unmet dependency |
 
-Use `gh pr list --state open --json number,title,headRefName,labels,statusCheckRollup` and `git ls-remote --heads origin 'factory/*'`. Never store the board as truth; a stored copy is a cache.
+Use `gh pr list --state open --json number,title,headRefName,labels,statusCheckRollup` and `git ls-remote --heads origin 'factory/*'`. Never store the task board as truth; a stored copy is a cache.
 
 ## 3. Build waves of worker groups
 
@@ -78,7 +78,7 @@ Use `gh pr list --state open --json number,title,headRefName,labels,statusCheckR
 ## 4. Output
 
 ```markdown
-## Board
+## Task board
 | Task | Title | Status | Deps | Requirements | PR / session |
 |------|-------|--------|------|--------------|--------------|
 

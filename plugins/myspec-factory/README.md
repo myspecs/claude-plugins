@@ -18,10 +18,11 @@ It can also run unattended shifts on a schedule.
 
 - **Software Factory Manager output style**: a clear role with hard limits (no work starts on an unfinished spec, no coding, no marking tasks done without checking, no force pushes, no auto-merge), the run loop, milestone gates, and a cost estimate before every wave.
 - **Task planning for brownfield changes**: when a bundle has no `tasks.md`, the manager writes one. A small change goes to a single worker; a large change with independent parts is split into 2–3 lanes that run in parallel (one worker, one branch, one pull request each). You approve it before it is uploaded to MySpec.
-- **Wave planning** from task dependencies and solution modules: related tasks go to one worker, one branch and one pull request, which saves setup and review rounds and avoids conflicts between branches. The board comes from MySpec checkboxes and open pull requests, so it is never out of date.
+- **Wave planning** from task dependencies and solution modules: related tasks go to one worker, one branch and one pull request, which saves setup and review rounds and avoids conflicts between branches. The task board comes from MySpec checkboxes and open pull requests, so it is never out of date.
 - **Dispatch** with self-contained worker briefs: the tasks, their acceptance criteria, the requirements and constitution sections it depends on, and what the pull request must contain.
 - **Integration**: required checks, a test for each acceptance criterion, a constitution and scope review, a merge under the agreed policy, then `[x]` written to MySpec.
-- **Live event feed**: changes to `tasks.md` and other spec files, worker reports, and finished spec sessions arrive as notifications instead of polling.
+- **Factory board**: one private claude.ai page for the repository, reused by every run and shared by the manager and every worker (no other pages are created), where every worker posts progress, asks questions without stopping, and copies its final report, and where the manager answers. You see every worker in one place and can step in with a comment. The log shows whether the manager or a worker wrote each message, and the comment panel shows which comments are yours.
+- **Live event feed**: changes to `tasks.md` and other spec files and finished spec sessions arrive as notifications instead of polling.
 - **Scheduled shifts**: a cloud routine that integrates, marks tasks done, and dispatches the next wave on a schedule.
 
 ## Prerequisites
@@ -132,9 +133,10 @@ Restart Claude Code after updating. To remove: `/plugin uninstall myspec-factory
 |---|---|---|
 | `setup` | `/myspec-factory:setup` | Check MySpec and GitHub access and cloud readiness; propose repository settings so workers load `myspec-mcp`; pick a MySpec project and open its event feed |
 | `watch` | Used by the manager | Open the project's live event feed and react to each event; polls when the feed is not available |
-| `plan` | Used by the manager | Build the board, group related tasks into one worker each, and plan waves of groups; write `tasks.md` when a brownfield bundle has none, as one lane or up to 3 parallel lanes by size |
+| `plan` | Used by the manager | Build the task board, group related tasks into one worker each, and plan waves of groups; write `tasks.md` when a brownfield bundle has none, as one lane or up to 3 parallel lanes by size |
 | `dispatch` | Used by the manager | Start one worker per group of related tasks; cloud first, local worktree as fallback |
 | `integrate` | Used by the manager | Verify and merge worker pull requests, mark tasks done on MySpec, run the milestone gate |
+| `board` | Used by the manager | Publish or reuse the factory board, read and answer workers' posts, handle your comments, and clean up finished work; holds the page template and sample calls |
 | `shift` | Used by the manager | Draft and create a scheduled cloud routine for one unattended shift |
 
 The manager also uses `myspec-mcp:implement` (how progress is written back) and `myspec-mcp:analyze` (the code-to-spec check at milestone gates).
@@ -144,7 +146,7 @@ The manager also uses `myspec-mcp:implement` (how progress is written back) and 
 1. Run `/myspec-factory:setup` in the repository and approve the settings it proposes.
 2. Switch to the Software Factory Manager style and ask: "Run the factory for project X, bundle Y."
 3. The manager opens the event feed, then asks once for the number of parallel workers, the merge method, how much it may do without asking (the autonomy level, below), whether cloud sessions are allowed, and who settles minor implementation details (`minor_defaults`: you, or the manager with each choice recorded as a reversible Clarification). It checks that the spec is complete and asks you about every open question or doubt, bundling small defaults into one approve-or-change question; nothing is dispatched until that passes. Then it plans wave 1 and tells you the cost. For a brownfield bundle without `tasks.md`, it first drafts the task list (one lane for a small change, up to 3 parallel lanes for a large one) and asks for your approval.
-4. Workers open pull requests titled `task N1, N2, …: <summary>` (or `task N: <title>` for a single task, `lane L: tasks …` for a lane) with a `## Factory report` at the end.
+4. Before the first worker starts, the manager opens the repository's factory board (publishing it the first time) and gives you its link. Workers post progress and questions there while they work, then open pull requests titled `task N1, N2, …: <summary>` (or `task N: <title>` for a single task, `lane L: tasks …` for a lane) with a `## Factory report` at the end.
 5. The manager verifies each pull request, merges it once it passes the merge gate, watches the deploy, marks its tasks `[x]` on MySpec, and dispatches the next wave.
 6. At the end of a milestone it runs the test suite, checks the code against the spec, uploads a milestone summary, drafts the spec corrections and follow-up tasks, and asks you one question about what to apply and dispatch.
 
@@ -160,7 +162,16 @@ At every level the manager still asks you about spec questions, changes a worker
 
 ## What workers deliver
 
-One group of related tasks, one branch, one pull request, titled `task N1, N2, …: <summary>`, with one commit per task. A task with nothing related to it gets its own worker and a pull request titled `task N: <title>`. A lane worker does every task of its lane in order on one branch and opens one pull request titled `lane L: tasks N1, N2, …`; it only edits the paths its lane owns. Tests are named after each acceptance criterion, and the body ends with a `## Factory report`. When a worker cannot finish, the report starts with `BLOCKED: spec` or `BLOCKED: env`. Workers never edit `tasks.md` or other spec files.
+One group of related tasks, one branch, one pull request, titled `task N1, N2, …: <summary>`, with one commit per task. A task with nothing related to it gets its own worker and a pull request titled `task N: <title>`. A lane worker does every task of its lane in order on one branch and opens one pull request titled `lane L: tasks N1, N2, …`; it only edits the paths its lane owns. Tests are named after each acceptance criterion, and the body ends with a `## Factory report`; the pull request's report is the one the merge is judged on. While it works, a worker also posts progress to the factory board after each task, asks its questions there and keeps working on the rest, and copies its final report there. When a worker cannot finish, the report starts with `BLOCKED: spec` or `BLOCKED: env`. Workers never edit `tasks.md` or other spec files.
+
+### Using the factory board
+
+- **Waiting on you** lists the questions only you can answer. Answer in a comment (the **Answer in a comment** button, or comment mode on the page).
+- Choose **Send to Claude** on your comment to reach the manager right away. A plain comment is read at the manager's next check, and it asks before acting on it.
+- Only the manager replies to comments. Claude Code may post a short automatic reply first; the manager's own replies start with `## Software Factory Manager`. It records your decisions and passes them to the workers, and the log marks them **Owner's words, relayed**.
+- A comment on a worker's card is about that worker.
+- There is one board per repository, and the same link is reused for all later work in it. The manager asks, then saves the link in a marked block of the repository's `CLAUDE.md` and commits it the way you choose (a small pull request, a direct commit, or leaving it uncommitted in your clone), so later sessions and fresh clones find it instead of creating a new board. The manager clears a worker's entries once its pull request merges and everything important is recorded on the pull request and in the spec, and resolves the comment threads it handled. It cannot resolve or delete comments you did not send to Claude; it lists those so you can clear them in the comment panel.
+- The board is private to your account. Keep it that way: workers act only on entries from the manager, and anyone you share it with could add comments.
 
 ## Safety and cost
 
@@ -189,8 +200,8 @@ Schedule a factory shift every night at 2am.
 | `extraKnownMarketplaces` and `enabledPlugins` | Repository `.claude/settings.json` (written by `setup` when you approve) | Lets workers load `myspec-mcp` |
 | `MYSPEC_API_TOKEN` | Cloud environment at claude.ai/code | MySpec access for cloud workers and scheduled shifts (they cannot use browser sign-in) |
 | `MYSPEC_API_TOKEN` | `env` in the managed repository's gitignored `.claude/settings.local.json` | MySpec access for local workers. A separate token keeps workers off the manager's browser sign-in, which two servers cannot share |
-| `.specs/<bundle>/factory-sessions.json` | Local, gitignored | Record of every dispatched worker: tasks, session id, URL, branch, status |
-| `.specs/<bundle>/factory-run.md` | Local, gitignored | Run log and board cache |
+| `.specs/<bundle>/factory-sessions.json` | Local, gitignored | Record of every dispatched worker: tasks, session id, URL, branch, status, and the factory board's link |
+| `.specs/<bundle>/factory-run.md` | Local, gitignored | Run log and task board cache |
 
 Add `.specs/` to the repository's `.gitignore`.
 
@@ -209,6 +220,10 @@ Add `.specs/` to the repository's `.gitignore`.
 | Two sets of MySpec tools in a worker | The repository enables `myspec-mcp` and also declares `myspec` in a root `.mcp.json`. Keep the plugin entry and remove the `.mcp.json` server. |
 | Auto-fix is not offered on a worker's pull request | Install the [Claude GitHub App](https://github.com/apps/claude) on the repository. Without it, workers only react while their session is running. |
 | A green pull request never gets a bot review | No review was requested. Run `gh pr edit <n> --add-reviewer <bot>`. |
+| The manager created a second board | The link was not committed. Commit the `<!-- myspec-factory:board:start -->` block in `CLAUDE.md` that the manager wrote, and delete the extra board (ask the manager, or use `/artifacts`). |
+| No factory board link, or workers report `- Board: unavailable` | The board needs Claude Code signed in to claude.ai (not an API key) in the manager and the workers. Without it the run continues; workers report through pull requests only. |
+| The manager did not answer a board comment | Only comments sent with **Send to Claude** wake the manager; plain comments wait for its next check. After a manager restart, paste the board link into the manager's session so comments reach it again. |
+| An entry on the board is marked **Unverified sender** | It was written with the wrong key: a worker writing outside its own mailbox, or a stale session. The manager ignores it and tells you. |
 | The event feed went quiet | The connection dropped. Ask the manager to reopen the feed ("reopen the event feed"); it creates a new token and revokes the old one. |
 | A deployment runs an older commit after two quick merges | Workflows that build a shared tag such as `:latest` raced. Re-run the workflow for the newest merge commit. |
 | A scheduled shift ran but did nothing | Read the routine's run log. The usual causes are a missing `MYSPEC_API_TOKEN` in the cloud environment, or a repository that was not prepared with `/myspec-factory:setup`. |

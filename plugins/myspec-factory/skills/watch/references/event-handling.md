@@ -63,7 +63,7 @@ Platform limits worth knowing: 20 live tokens per user, 10 per project, 3 concur
 1. Ignore the event if it is the echo of the manager's own write (`data.content_version` or `data.revision_number` matches what the last `update_spec_file` returned).
 2. Otherwise `get_spec_file` for the new `content_version` and `read_spec_file` for the body.
 3. Diff against the last known body: newly checked tasks (a human or another agent finished something), new tasks (convergence milestone added by an analysis, or a spec edit), reworded acceptance criteria.
-4. Refresh the board; if a task now marked `[x]` has a worker running, steer that worker to stop and report; if a dispatched task's text changed, steer the worker with the new text or redispatch.
+4. Refresh the task board; if a task now marked `[x]` has a worker running, steer that worker to stop and report; if a dispatched task's text changed, steer the worker with the new text or redispatch.
 5. If the manager had a pending write, redo it on the fresh body with the new token.
 
 ### Requirements, solution, constitution, proposal, or a delta changed

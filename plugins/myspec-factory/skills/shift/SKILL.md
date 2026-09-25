@@ -17,6 +17,8 @@ A shift is one pass of the manager loop run by a cloud routine with no human pre
 5. A merge policy the user is willing to apply unattended: `squash` (merge green pull requests by squash inside the current milestone, never past a milestone boundary, never with failing or missing required checks) or `report only` (verify and report; merges wait for a human). The prompt carries the choice.
 6. Caps: concurrency (default 2 for unattended), stop after two consecutive failures, minimum cadence one hour (cron in UTC; `*/30 * * * *` is rejected).
 
+A shift runs without a factory board (the `board` skill): a routine cannot keep the board's comment watch between runs, so its briefs carry no `## Factory board` section and its workers report through pull requests only. The repository's board, if the interactive manager has one, is left as it is.
+
 ## Draft the routine
 
 Body shape (fill placeholders; generate a fresh lowercase v4 UUID for `events[].data.uuid`):

@@ -24,15 +24,16 @@ Details: [plugins/myspec-mcp/README.md](plugins/myspec-mcp/README.md).
 
 Turns Claude Code into a **Software Factory Manager**. The manager does not write code. It plans waves of tasks from `tasks.md`, groups related tasks and starts one Claude Code worker session per group (in the cloud, or in a local git worktree when the cloud is not allowed or not available), checks and merges their pull requests, marks tasks done on MySpec, and stops at each milestone for your review.
 
-It ships the **Software Factory Manager** output style and six skills:
+It ships the **Software Factory Manager** output style and seven skills:
 
 | Skill | Use it to |
 |---|---|
 | `/myspec-factory:setup` | Check MySpec and GitHub access, cloud readiness, and repository settings before the first run; pick a MySpec project and open its event feed |
 | `watch` | Open the project's live event feed so changes arrive without polling |
-| `plan` | Build the board and group ready tasks into waves |
+| `plan` | Build the task board and group ready tasks into waves |
 | `dispatch` | Start one worker session per group of related tasks |
 | `integrate` | Verify and merge worker pull requests, mark tasks done, run the milestone gate |
+| `board` | Keep the repository's factory board: one private claude.ai page where workers post progress and questions and the manager answers |
 | `shift` | Schedule an unattended shift as a cloud routine |
 
 Details: [plugins/myspec-factory/README.md](plugins/myspec-factory/README.md).
