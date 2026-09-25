@@ -128,3 +128,5 @@ How the manager and workers behave lives in the output style and the skills. Thi
 - Instructions are for Claude: imperative, ordered steps, explicit stop conditions.
 - Interactive commands (browser login, long-running bridges) are handed to the user, not run in a foreground Bash call.
 - Never instruct Claude to force a write by omitting `expected_version`.
+- A skill writes to a target repository's `CLAUDE.md` or `AGENTS.md` only inside its own plugin's block: `<!-- <plugin name>:start -->` … `<!-- <plugin name>:end -->`, one `- Key: value` line, no heading. It never writes inside another plugin's block or outside its markers, replaces its block in place, and writes and commits only with the user's agreement.
+- A block holds only what must survive across sessions and clones and cannot be rediscovered: `myspec-mcp` → ``- Project: <name> (`<id>`)``, `myspec-factory` → `- Board: <url>`. Everything else is rediscovered each session (bundle, reviewer, required checks) or is a preference asked per run (the factory `policy`), and stays in gitignored `.specs/` or memory.

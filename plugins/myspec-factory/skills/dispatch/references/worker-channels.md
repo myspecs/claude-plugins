@@ -45,7 +45,7 @@ Put the content on the board and send only the doorbell when the run has a board
 | `Monitor` on `gh pr view` / `git ls-remote` | Each worker's branch, pull request, checks, review decision and merge state. One watch per wave, re-armed on expiry |
 | `Monitor` on `gh run list` | Post-merge deploy runs on the default branch |
 | MySpec event feed (`watch` skill) | Spec changes and spec-session completion. Worker reports arrive on pull requests and the factory board, not on the feed |
-| `Monitor` on `board-tick.sh` | A line every few minutes while workers run: the cue to read the factory board, which wakes nobody by itself |
+| `Monitor` on `board-tick.sh` | A line every 10 minutes while a worker is working: the cue to read the factory board, which wakes nobody by itself. Stopped as soon as no worker is working |
 | Board comment watch | Set up at every run start and after a restart (`board` skill §3): the owner's **Send to Claude** on a board comment wakes the manager. Plain comments, resolves and worker writes do not |
 | Task notifications | Agent-tool workers and background Bash commands |
 | `ListAgents` | Which cloud sessions exist and whether each is `running` or `idle` right now |

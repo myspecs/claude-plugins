@@ -23,7 +23,7 @@ Facts and formats shared by the manager and every worker. The manager's procedur
 |---|---|---|
 | Worker → manager: progress, questions, report copy | The worker's mailbox `mail/w:<group>~sfm` and `reports/w:<group>` | None. The manager reads the board at every loop step, on every `pr-watch.sh` or feed line, and on every `board-tick.sh` line |
 | Manager → worker: answers, decisions, relays, steering | `mail/sfm~w:<group>` (or `mail/sfm~all-workers`) | Doorbell: `SendMessage` to the worker's `agent_name`, else `claude -p "<doorbell>" --cloud <session_id>` |
-| Owner → manager | A comment on the board (the shell's comment mode, or a card's **Comment** button) | **Send to Claude** wakes the manager at once; a plain comment is seen at the next board read |
+| Owner → manager | A comment on the board (the shell's comment mode, or a card's **Comment** button) | **Send to Claude** wakes the manager at once while its board watch is on (a worker is working, a question waits for the owner, or less than one tick window has passed since both ended); otherwise, and for a plain comment, it is seen at the next board read |
 | Manager → owner | A signed reply in the thread, and `AskUserQuestion` in the terminal for decisions | — |
 | Owner → worker | Never direct: the manager relays the owner's words as a `decision` message | Doorbell |
 
@@ -64,7 +64,7 @@ One writer per document, so writes pinned with `if_version` never fight. The pag
 
 | Document | Writer | Body |
 |---|---|---|
-| `run/meta` | Manager | `bundle`, `project_id`, `repo`, `protocol: "factory-board/1"`, `status` (`running`, `closed`), `started_at`, `updated_at`, `history`: the last 20 finished runs, one line each (`{"bundle", "closed_at", "summary"}`) |
+| `run/meta` | Manager | `bundle`, `project_id`, `repo`, `protocol: "factory-board/1"`, `status` (`running`, `closed`), `started_at`, `updated_at`, `history`: the last 20 finished runs on the board, of any repository sharing it, one line each (`{"repo", "bundle", "closed_at", "summary"}`) |
 | `board/<worker id>` | Manager | `worker_id`, `tasks`, `title`, `status` (the registry status), `session_url`, `branch`, `pr`, `verified_sha`, `next` (the manager's next action, one line), `updated_at` |
 | `reports/<worker id>` | That worker (the manager creates it at dispatch) | `worker_id`, `key`, `tasks`, `phase` (`dispatched`, `started`, `task-done`, `blocked`, `pr-open`, `review-round`, `final`), `tasks_done`, `branch`, `head_sha`, `pr`, `report` (the full `## Factory report` text), `updated_at` |
 | `mail/<from>~<to>` | The sender (the manager creates it at dispatch) | `from`, `to`, `key` (the sender's key), `last_seq`, `updated_at`, `messages`: a map keyed by the zero-padded sequence number (`"001"`, `"002"`, …) |

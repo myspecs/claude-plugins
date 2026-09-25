@@ -35,15 +35,14 @@ At a milestone checkpoint, offer `upload_attachment` on this file (or a test rep
 
 ## Managed block in CLAUDE.md or AGENTS.md (opt-in)
 
-Only when the user agrees, write a marker-delimited block so future sessions know which MySpec project this repo implements. Never touch text outside the markers; replace the block in place if it exists.
+Only when the user agrees, write a marker-delimited block so future sessions know which MySpec project this repo implements, and commit it so it survives across sessions and clones. The block holds the project and nothing else: it is the one fact this plugin cannot rediscover cheaply. The bundle is found with `list_spec_file` each session, the skills carry the workflow, and session notes stay in the gitignored `.specs/<bundle>/progress.md`. Never touch text outside the markers or inside another plugin's block (such as `<!-- myspec-factory:start -->`); replace this block in place if it exists.
 
 ```markdown
-<!-- myspec:start -->
-## MySpec
+<!-- myspec-mcp:start -->
 - Project: <name> (`<project_id>`)
-- Bundle: `specs/<bundle>/` (constitution, requirements, solution, tasks)
-- Workflow: use the `myspec-mcp:implement` skill. Read constitution first. Take `content_version` from `get_spec_file` before every `update_spec_file`. Record clarifications in tasks.md or the `## Clarifications` section of requirements.md. Local notes in `.specs/<bundle>/progress.md` (gitignored).
-<!-- myspec:end -->
+<!-- myspec-mcp:end -->
 ```
 
-If both `CLAUDE.md` and `AGENTS.md` exist, write to the one the user names; default to `CLAUDE.md`.
+A block with the older `<!-- myspec:start -->` / `<!-- myspec:end -->` markers is read the same way; when you rewrite it, replace it with this one.
+
+If both `CLAUDE.md` and `AGENTS.md` exist, write to the one the user names; default to `CLAUDE.md`. Commit it the way the user chooses (a small pull request, or a direct commit where the default branch allows it); never push without their agreement.

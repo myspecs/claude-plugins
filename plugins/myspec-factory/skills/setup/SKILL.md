@@ -55,12 +55,12 @@ If the repository or user settings set `isolatePeerMachines: true`, every messag
 
 ## 1c. Manager: factory board tools
 
-Workers report progress and ask questions mid-work on a factory board, a private claude.ai artifact the manager publishes once for the repository and reuses for every run (the `board` skill). Check that this session has the tools: the `Artifact` tool is in the tool list, and `ToolSearch` `select:ArtifactData,ArtifactComments` loads both. Nothing is published during setup.
+Workers report progress and ask questions mid-work on a factory board, a private claude.ai artifact the manager publishes once for the repository (or shares with another repository) and reuses for every run (the `board` skill). Check that this session has the tools: the `Artifact` tool is in the tool list, and `ToolSearch` `select:ArtifactData,ArtifactComments` loads both. Nothing is published during setup.
 
 - Present: the run gets a board. Whether the owner's **Send to Claude** on a board comment wakes the manager shows in the board watch's status (`ArtifactComments` `watch` without a URL lists it) once a run starts on the board; without auto-replies armed, comments are read at the manager's next board check.
 - Missing (an API-key or third-party-provider sign-in, or a build without them): the run works without a board; workers report through pull requests only. Say so in the report.
 - Cloud workers get the same tools from the same claude.ai account; the first worker's Factory report (`- Board:` line) confirms it. Local `claude --bg` workers have them; `claude -p` (print) sessions do not.
-- An existing board: the `<!-- myspec-factory:board:start -->` block in the repository's `CLAUDE.md` (or `AGENTS.md`), else `registry.py … board` from the dispatch skill. Report its link; every run reuses it. The block is written and committed by the `board` skill when it publishes the board, with the user's agreement; setup does not write it.
+- An existing board: the `<!-- myspec-factory:start -->` block in the repository's `CLAUDE.md` (or `AGENTS.md`), else `registry.py … board` from the dispatch skill. Report its link; every run reuses it. The block is written and committed by the `board` skill when it publishes the board, with the user's agreement; setup does not write it.
 
 ## 2. Manager: GitHub access
 
@@ -111,7 +111,7 @@ Enabling `myspec-mcp@myspec` already registers the `myspec` server for the sessi
 
 `.gitignore`: add `.specs/`.
 
-`CLAUDE.md`: the managed `<!-- myspec:start -->` block from the `myspec-mcp:implement` skill's session-handoff reference, naming the project and bundle, so workers and future managers find the specification. The `<!-- myspec-factory:board:start -->` block next to it holds the factory board link; the `board` skill writes it, never setup.
+`CLAUDE.md`: each plugin keeps its own block there. The `<!-- myspec-mcp:start -->` block names the MySpec project so workers and future managers find the specification; it belongs to the myspec-mcp plugin, so when it is missing, let the `myspec-mcp:implement` skill offer to write it (its session-handoff reference has the format) rather than writing it here. The `<!-- myspec-factory:start -->` block holds the factory board link; the `board` skill writes it, never setup.
 
 Do not enable `myspec-factory` in the repository's `enabledPlugins`; workers must not run the manager persona.
 
@@ -121,7 +121,7 @@ Local worktree sessions need `git worktree` support and the `claude` CLI; check 
 
 ## 6. Report
 
-Table: party, check, status, fix. Then say whether Remote Control is connected, whether the factory board tools are present, whether cloud dispatch is possible, whether MySpec-in-worker is configured, and the merge policy inputs you found (default branch, protection, required checks, the reviewer whose approval gates a merge). Keep those inputs for the run: once a bundle is chosen they go under `policy` in `.specs/<bundle>/factory-sessions.json`, so the run does not rediscover them.
+Table: party, check, status, fix. Then say whether Remote Control is connected, whether the factory board tools are present, whether cloud dispatch is possible, whether MySpec-in-worker is configured, and the merge policy inputs you found (default branch, protection, required checks, the reviewer whose approval gates a merge). Keep those inputs for the run: once a bundle is chosen they go under `policy` in `.specs/<bundle>/factory-sessions.json`, so the run does not rediscover them. They are discoverable or run preferences, so they never go into `CLAUDE.md`; the only committed factory fact is the board link (`board` skill).
 
 ## 7. Pick the project and open its event feed
 

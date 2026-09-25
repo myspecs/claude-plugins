@@ -16,11 +16,11 @@ Confirm `list_projects` works. If the tool is missing or returns "Not authentica
 
 ## 1. Locate the project and bundle
 
-1. If the repo's `CLAUDE.md` or `AGENTS.md` contains a `<!-- myspec:start -->` block (see `references/session-handoff.md`), use the project and bundle it names.
+1. If the repo's `CLAUDE.md` or `AGENTS.md` contains a `<!-- myspec-mcp:start -->` block (or the older `<!-- myspec:start -->`; see `references/session-handoff.md`), use the project it names, and find the bundle with step 3.
 2. Otherwise `list_projects` with `query` set to the user's words. One match: use it. Several: ask. None: ask whether to `create_project`.
 3. `list_spec_file` with `project_id` and `path: "specs"`; if empty, call again without `path` (OpenSpec changes live under `openspec/changes/<id>/`). A bundle is the set of files sharing a directory. Match documents by `file_type`, not filename; for `openspec-spec` files, which cover both `design.md` and every capability delta, use the path to tell them apart. If several bundles exist, ask.
 4. Note coexisting local spec tooling (`.specify/`, `openspec/`, `.kiro/`) and do not overwrite its files.
-5. Offer once, and only if the user agrees, to write the managed block into `CLAUDE.md` so later sessions skip this step.
+5. When the block is missing, offer once to write it (the project line only) into `CLAUDE.md` and commit it, so every later session and every clone skips the project lookup. Write and commit only with the user's agreement (`references/session-handoff.md`).
 
 Bundle shapes: greenfield (constitution, requirements, solution, tasks); MySpec brownfield (proposal, requirements delta with AR/BR/CR ids, optional tasks); OpenSpec (proposal, `specs/<capability>/spec.md` deltas, optional design, tasks). If a document is missing, say so; never invent it.
 

@@ -21,9 +21,10 @@ Usage (--file is required by every subcommand except `log` and `new-key`):
   registry.py board --file F                             print the board URL to reuse: the repository's
         CLAUDE.md (or AGENTS.md) board block, else this registry's, else .specs/factory-board.json;
         the source goes to stderr; exit 1 when there is none. F need not exist yet
-  registry.py claude-md --file F --url U [--target PATH] write or replace the board block in the
-        repository's CLAUDE.md (AGENTS.md when only that exists; created when neither does); text
-        outside the markers is never touched. Committing the file is a separate, agreed step.
+  registry.py claude-md --file F --url U [--target PATH] write or replace the myspec-factory block in the
+        repository's CLAUDE.md (AGENTS.md when only that exists; created when neither does). The block
+        holds only the board link, the one factory fact persisted in the repository; text outside
+        the markers is never touched. Committing the file is a separate, agreed step.
         F need not exist yet: its path only locates the repository root
   registry.py whois --file F --from ID --key K           who wrote a board message: prints "sfm" or the
         session; exit 1 when the id and key do not match the registry or the session was redispatched
@@ -338,8 +339,8 @@ def cmd_artifact(a):
     print(f"artifact url={a.url} run_key={run_key} (shared pointer {shared})")
 
 
-BOARD_START = "<!-- myspec-factory:board:start -->"
-BOARD_END = "<!-- myspec-factory:board:end -->"
+BOARD_START = "<!-- myspec-factory:start -->"
+BOARD_END = "<!-- myspec-factory:end -->"
 
 
 def repo_root(registry_file):
@@ -353,14 +354,7 @@ def instruction_files(registry_file):
 
 
 def board_block(url):
-    return "\n".join([
-        BOARD_START,
-        "## Factory board",
-        f"- Board: {url}",
-        "- One board per repository: the Software Factory Manager reuses this link for all work here and never publishes",
-        "  another. It publishes, maintains and cleans the board; workers use it only as their brief says.",
-        BOARD_END,
-    ])
+    return "\n".join([BOARD_START, f"- Board: {url}", BOARD_END])
 
 
 def url_in_block(text):

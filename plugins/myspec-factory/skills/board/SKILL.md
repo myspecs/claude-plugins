@@ -1,12 +1,12 @@
 ---
 name: board
-description: Publish or reuse, read, answer and clean up the factory board, the one private claude.ai artifact per repository where factory workers post progress, questions and a copy of their Factory report and the Software Factory Manager answers them. Use when the manager starts a run or dispatches a worker, on every board-tick.sh line, when a comment on the board wakes the session (an artifact-auto-react notification or a comment sent to Claude), when a worker's pull request merges, or when the user says "publish the factory board", "open the board", "read the board", "what did the workers post", "answer the worker's question", "clean up the board", "close the run on the board", or pastes the board link. Holds the board page template and sample ArtifactData and ArtifactComments calls.
+description: Publish or reuse, read, answer and clean up the factory board, the private claude.ai artifact a repository's factory runs use (at most one active board per repository; several repositories may share one) where factory workers post progress, questions and a copy of their Factory report and the Software Factory Manager answers them. Use when the manager starts a run or dispatches a worker, on every board-tick.sh line, when a comment on the board wakes the session (an artifact-auto-react notification or a comment sent to Claude), when a worker's pull request merges, or when the user says "publish the factory board", "open the board", "read the board", "what did the workers post", "answer the worker's question", "clean up the board", "close the run on the board", or pastes the board link. Holds the board page template and sample ArtifactData and ArtifactComments calls.
 user-invocable: false
 ---
 
 # Factory board
 
-The factory board is one private claude.ai artifact per repository, reused by every run and every bundle. Workers write progress, questions and a copy of their Factory report to its database; the manager reads it, answers there, and rings a doorbell; the owner steps in with comments. The page only displays; all traffic goes through `ArtifactData` (the database) and `ArtifactComments` (the threads).
+The factory board is a private claude.ai artifact that a repository's factory runs reuse, run after run. A repository has at most one active board; several repositories may share one board, one run at a time. Workers write progress, questions and a copy of their Factory report to its database; the manager reads it, answers there, and rings a doorbell; the owner steps in with comments. The page only displays; all traffic goes through `ArtifactData` (the database) and `ArtifactComments` (the threads).
 
 The pull request stays the contract: its `## Factory report` is what `integrate` gates on. The board is also not the task board: task status still comes from `tasks.md` checkboxes and pull requests.
 
@@ -22,11 +22,12 @@ The registry script is the dispatch skill's `scripts/registry.py` (`<plugin root
 
 ## 1. One board, and no other artifact
 
-- Strictly one board per repository: the one the manager and its workers are working on. They share it through every wave, milestone, redispatch, manager restart, run and bundle, and every later piece of work in that repository reuses the same link. A board never serves two repositories, and a repository never gets a second board while its board exists.
-- The link lives in the repository itself, in a managed block of its `CLAUDE.md` (or `AGENTS.md`) between `<!-- myspec-factory:board:start -->` and `<!-- myspec-factory:board:end -->`, committed so every clone, every later session and every future manager finds it. Claude Code loads that file at session start, so the link is usually already in context.
-- Find it before anything else, in this order: `registry.py … board` (the `CLAUDE.md`/`AGENTS.md` block, then this bundle's registry, then `.specs/factory-board.json`; it names its source); `Artifact` `list` for `<repo> factory board`; a board link the user pastes. Found: go to §3, which also checks it belongs to this repository and records the link in the repository when it is not there yet. None: §2.
+- At most one active board per repository. The manager and its workers share it through every wave, milestone, redispatch, manager restart, run and bundle, and every later piece of work in that repository reuses the same link. Never publish a second board for a repository that already has one.
+- Several repositories may share one board (the user pastes or names another repository's board, and this repository's block records the same link). A shared board carries one run at a time: `run/meta` names the repository and bundle of the run on it (§3).
+- The link is the one factory fact persisted in the repository. Everything else the manager knows is rediscovered each run (reviewer, required checks, default branch) or is a run preference asked once per run (the `policy`), and stays in the gitignored registry; never add it to the block. The link lives in a managed block of the repository's `CLAUDE.md` (or `AGENTS.md`) between `<!-- myspec-factory:start -->` and `<!-- myspec-factory:end -->` (one line: `- Board: <url>`), committed so every clone, every later session and every future manager finds it. Claude Code loads that file at session start, so the link is usually already in context.
+- Find it before anything else, in this order: `registry.py … board` (the `CLAUDE.md`/`AGENTS.md` block, then this bundle's registry, then `.specs/factory-board.json`; it names its source); `Artifact` `list` for `<repo> factory board`; a board link the user pastes. Found: go to §3, which also records the link in the repository when it is not there yet. None: §2.
 - A link in the block whose board no longer opens (`Artifact` `read` fails because it was deleted): tell the user, publish a new board (§2), whose step 5 replaces the link in the block.
-- Two boards for the same repository in the listing (an earlier mistake): use the one the block names, or else the newest one whose `run/meta.repo` is this repository; tell the user about the other and delete it only when they confirm.
+- Two boards for this repository (for example the block names one and the listing shows another `<repo> factory board`, an earlier mistake): use the one the block names, or else the newest one; tell the user about the other and delete it only when they confirm, since another repository may be using it.
 - Nobody publishes any other artifact. Workers never publish at all; the manager keeps status reports in the terminal and on the board and uploads milestone summaries to MySpec (`integrate` §6). This overrides the general habit of publishing a finished report as an artifact.
 - Keep it small: `reports/<worker id>` holds only the latest report, messages are grouped per sender and recipient, `progress` entries are one or two lines, and the page is republished only for a new template, never for data. §7 removes what is finished.
 
@@ -50,10 +51,10 @@ To install a newer template later: `Artifact` `read` the board, then publish the
 
 At the start of every run, and after every manager restart:
 
-1. Watch it (`ArtifactComments` `watch` with the URL). When the link did not come from the user's own message (the `CLAUDE.md` block, the registry, the pointer file or a listing), first ask the user to paste the board link into the conversation: auto-replies arm only for a link the user gave in their own message.
-2. `ArtifactData` `get` `run/meta`. Its `repo` must be this repository (`owner/repo` from `git remote -v` in the clone); a board of another repository is never used: go back to §1 and look again, or publish this repository's own board (§2). A new board has no `run/meta` yet.
+1. Watch it (`ArtifactComments` `watch` with the URL). When the link did not come from the user's own message (the `CLAUDE.md` block, the registry, the pointer file or a listing), first ask the user to paste the board link into the conversation: auto-replies arm only for a link the user gave in their own message. The same applies when you re-arm a watch you stopped while no worker was working: check the watch listing (`ArtifactComments` `watch` without a URL) and, when it does not say auto-replies armed, ask for the link once.
+2. `ArtifactData` `get` `run/meta`: the repository (`repo`) and bundle of the run on the board, and its `status`. A new board has no `run/meta` yet. Compare with this repository (`owner/repo` from `git remote -v` in the clone) and this bundle.
 3. `status: "running"` for this bundle, with this registry's `artifact.run_key`: a restart. Resume: keep the run key (live workers accept only the key in their brief), do not re-seed, and go to step 8.
-   `status: "running"` for another bundle: another run still uses the board; ask the user whether it is over and stop until they answer. Never take the board from a live run.
+   `status: "running"` for another bundle or another repository: another run still uses the board (a shared board carries one run at a time); ask the user whether it is over and stop until they answer. Never take the board from a live run.
 4. Documents left by an earlier run (`board/*`, `reports/*`, `mail/*`, `cursors/*` of workers this run did not start): check each as §7 step 1 says, report anything still open to the user, then delete them as §7 step 2 does.
 5. `registry.py … board` did not name `CLAUDE.md` or `AGENTS.md` as its source: record the link in the repository as §2 step 5 says.
 6. Record the board with a fresh run key: `registry.py … artifact --url <url> --published-at <now> --run-key "$(registry.py new-key)"`.
@@ -68,7 +69,7 @@ Before the worker's session starts (its brief says its documents already exist):
 2. Create the worker's five documents in one batch (sample-calls.md § Each dispatch): `board/<id>`, `reports/<id>`, `mail/sfm~<id>`, `mail/<id>~sfm`, `cursors/<id>`.
 3. Fill the brief's `## Factory board` section (the dispatch skill's `references/worker-brief.md`) with the board URL, the worker id, the worker key and the run key; then dispatch.
 4. Right after the dispatch: `registry.py … add-session … --worker-id <id> --worker-key <key>`; update `board/<id>` with `session_url`.
-5. Keep one `board-tick.sh` Monitor running while any worker runs (the watch skill).
+5. Start one `board-tick.sh` Monitor if none is running (the watch skill), and make sure the board watch is on (§3 step 1). Keep the Monitor only while a worker is working; stop it with TaskStop as soon as none is. Keep the watch while a worker is working or a board question waits for the owner, and when both end, leave it on until the stopped Monitor's window would have ended, then stop it at the next wake (`ArtifactComments` `watch` with `on: false`) without re-arming (the output style's polling rule). Start both again when you dispatch or ring a doorbell.
 
 ## 5. Read the board
 
@@ -113,4 +114,4 @@ Never delete a document or resolve a thread for a worker whose pull request is s
 
 ## 8. Close a run
 
-When the bundle closes or the user ends the run: finish §7 for every worker; delete `mail/sfm~all-workers`; clear `cursors/sfm`; add one line to `run/meta.history` (bundle, date, what merged; keep the last 20) and set `status: "closed"` (sample-calls.md § Close a run); stop `board-tick.sh`; stop the watch (`ArtifactComments` `watch` with `on: false`). The board stays for the next run. Delete the board only when the user asks (`Artifact` `delete`, which the user confirms).
+When the bundle closes or the user ends the run: finish §7 for every worker; delete `mail/sfm~all-workers`; clear `cursors/sfm`; add one line to `run/meta.history` (repository, bundle, date, what merged; keep the last 20) and set `status: "closed"` (sample-calls.md § Close a run); stop `board-tick.sh`; stop the watch (`ArtifactComments` `watch` with `on: false`). The board stays for the next run. Delete the board only when the user asks (`Artifact` `delete`, which the user confirms).

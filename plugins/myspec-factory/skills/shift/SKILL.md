@@ -10,7 +10,7 @@ A shift is one pass of the manager loop run by a cloud routine with no human pre
 
 ## Prerequisites (verify before drafting)
 
-1. The repository is prepared per the `setup` skill: `.claude/settings.json` enables `myspec-mcp@myspec` through the `myspec` marketplace (a root `.mcp.json` only as the fallback setup describes), and `CLAUDE.md` carries the managed MySpec block naming project and bundle.
+1. The repository is prepared per the `setup` skill: `.claude/settings.json` enables `myspec-mcp@myspec` through the `myspec` marketplace (a root `.mcp.json` only as the fallback setup describes), and `CLAUDE.md` carries the managed `<!-- myspec-mcp:start -->` block naming the project (the routine prompt names the bundle).
 2. A cloud environment (Anthropic cloud or self-hosted, `env_...` id) with `MYSPEC_API_TOKEN` (read-write, scoped to the organisation) and egress to npm and the MySpec hosts. Routines cannot attach MCP servers configured in Claude Code; they only attach claude.ai connectors. Whether the routine's session loads the repository's plugin and MCP configuration is documented for cloud sessions in general, not for routines: the prompt below therefore discovers the MySpec tool prefix at run time and has an explicit no-MySpec branch. Run the first shift manually with `action: "run"` and read its run log before trusting the schedule.
 3. `gh` authentication and a cloud dispatch path inside the routine's session are not guaranteed. The prompt checks both and stops with a report when either is missing; the first manual run must confirm them.
 4. The GitHub App grants the routine's session push and pull-request rights on the repository.

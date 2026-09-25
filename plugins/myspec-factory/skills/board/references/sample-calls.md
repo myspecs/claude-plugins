@@ -36,12 +36,9 @@ python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>
 The block it writes:
 
 ```markdown
-<!-- myspec-factory:board:start -->
-## Factory board
+<!-- myspec-factory:start -->
 - Board: https://claude.ai/artifact/<id>
-- One board per repository: the Software Factory Manager reuses this link for all work here and never publishes
-  another. It publishes, maintains and cleans the board; workers use it only as their brief says.
-<!-- myspec-factory:board:end -->
+<!-- myspec-factory:end -->
 ```
 
 Land it the way the user chose. A pull request, leaving the clone back on the base branch and clean:
@@ -229,7 +226,7 @@ ArtifactData({
       data: { reads: {}, threads: {}, updated_at: "<now>" } },
     { op: "update", collection: "run", doc_id: "meta", if_version: <v>,
       data: { status: "closed", updated_at: "<now>",
-              history: [ /* earlier entries */ { bundle: "<bundle>", closed_at: "<now>",
+              history: [ /* earlier entries */ { repo: "<owner/repo>", bundle: "<bundle>", closed_at: "<now>",
                                                   summary: "<n> tasks merged in PRs #<a>, #<b>; follow-ups: <none | list>" } ] } }
   ]
 })

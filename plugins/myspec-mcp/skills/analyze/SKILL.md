@@ -21,7 +21,7 @@ Pick spec consistency before implementation starts or after spec edits. Pick con
 
 ## Procedure
 
-1. Locate the project and bundle as in the `implement` skill (managed block in `CLAUDE.md` or `AGENTS.md`, else `list_projects` and `list_spec_file`). Read every document of the bundle with `read_spec_file`.
+1. Locate the project and bundle as in the `implement` skill (the project from the managed block in `CLAUDE.md` or `AGENTS.md`, else `list_projects`; the bundle from `list_spec_file`). Read every document of the bundle with `read_spec_file`.
 2. Build an inventory: requirement ids (FR/NFR, AR/BR/CR, or OpenSpec `### Requirement:` names) with their acceptance criteria; tasks with number, status, `_Dependencies:_`, `_Requirements:_`, `_Complexity:_`; constitution constraints as a checklist.
 3. Run the checks for the chosen mode from `references/checks.md`. For convergence, inspect the repository (grep for requirement ids in tests, read the modules `solution.md` names, run the test suite if the user allows) and classify every requirement as implemented, partial, missing, contradicts, or unrequested.
 4. Score coverage: percentage of requirements with at least one task, and (convergence) percentage with at least one passing test that names them.

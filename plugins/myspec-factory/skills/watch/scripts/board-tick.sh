@@ -5,18 +5,18 @@
 # cue to read the board (the board skill).
 #
 # Usage: board-tick.sh [interval-minutes] [ticks]
-#   interval-minutes  whole minutes between ticks (default 5, 1-60)
-#   ticks             exit after this many ticks (default 6, one Monitor window at 5 minutes);
+#   interval-minutes  whole minutes between ticks (default 10, 1-60)
+#   ticks             exit after this many ticks (default 3, one 30-minute Monitor window at 10 minutes);
 #                     the Monitor window (30 min at most) may end first: re-arm on either
 #
 # Lines:
 #   <time> board-tick <n>/<ticks>   -- read the board mailbox now
 #   <time> board-tick-done          -- the last tick was printed; exit 0
-# Stop it (TaskStop) as soon as no worker is running. Works with macOS bash 3.2.
+# Run it only while a worker is working; stop it (TaskStop) as soon as none is. Works with macOS bash 3.2.
 set -uo pipefail
 
-minutes=${1:-5}
-ticks=${2:-6}
+minutes=${1:-10}
+ticks=${2:-3}
 
 case "$minutes" in ''|*[!0-9]*) echo "interval-minutes must be a whole number"; exit 2 ;; esac
 case "$ticks" in ''|*[!0-9]*) echo "ticks must be a whole number"; exit 2 ;; esac

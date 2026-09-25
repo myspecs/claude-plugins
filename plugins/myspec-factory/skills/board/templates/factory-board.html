@@ -4,7 +4,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
   /* Factory board template (myspec-factory, protocol factory-board/1).
-     One board per repository, reused by every run. Read-only view of the board database;
+     At most one active board per repository; repositories may share one, one run at a time.
+     Read-only view of the board database;
      the manager and workers write it with ArtifactData, and the manager cleans it.
      Protocol: the board skill (skills/board/SKILL.md). The manager changes only <title> when publishing. */
   :root {
@@ -500,6 +501,7 @@
     h.forEach(function (r) {
       var li = el("li");
       li.appendChild(el("strong", "", (r && r.bundle) || "run"));
+      if (r && r.repo) li.appendChild(el("span", "mono muted", r.repo));
       li.appendChild(el("span", "mono muted", (r && r.closed_at) ? String(r.closed_at).slice(0, 10) : ""));
       li.appendChild(el("span", "h-summary", (r && r.summary) || ""));
       list.appendChild(li);
