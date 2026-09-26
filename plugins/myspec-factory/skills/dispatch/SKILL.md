@@ -74,12 +74,20 @@ Before the first cloud dispatch, in the **local clone of the target repository**
 
 | Order | Path | When |
 |---|---|---|
-| 1 | Agent tool with `isolation: "remote"` | Available in this build and the user allowed cloud dispatch. Runs in the background; its completion arrives as a notification |
-| 2 | `claude --cloud` under a pseudo-terminal | Remote subagent unavailable, or the user asked for the CLI. `--cloud` **requires a TTY** and exits 1 in a plain background Bash call, so dispatch with `cd <clone> && script -q <typescript> claude --cloud "$(cat <brief>)" </dev/null` (see `references/cloud-vs-local.md`). Steer a running session with `claude -p "<message>" --cloud <session_id>` |
-| 3 | Agent tool with `isolation: "worktree"` | Cloud not allowed or unavailable. Background subagent in its own worktree; results return as a notification |
+| 1 | Agent tool with `isolation: "remote"` | Available in this build and the user allowed cloud dispatch. Runs in the background; its completion arrives as a notification. It takes the manager's permission mode (see below) |
+| 2 | `claude --cloud` under a pseudo-terminal | Remote subagent unavailable, or the user asked for the CLI. `--cloud` **requires a TTY** and exits 1 in a plain background Bash call, so dispatch with `cd <clone> && script -q <typescript> claude --cloud "$(cat <brief>)" --permission-mode auto </dev/null` (the brief must come right after `--cloud`, which takes it as its value) (see `references/cloud-vs-local.md`). Steer a running session with `claude -p "<message>" --cloud <session_id>` |
+| 3 | Agent tool with `isolation: "worktree"` | Cloud not allowed or unavailable. Background subagent in its own worktree; results return as a notification. It takes the manager's permission mode (see below) |
 | 4 | `cd <clone> && claude --bg "<brief>" --worktree tasks-<N1>-<N2>-… --permission-mode auto` via Bash | Cloud not allowed or unavailable, and a separate local process is preferred over path 3. The prompt is positional (`--bg` and `-p` conflict) and `--permission-mode auto` keeps the worker unattended; monitor with `claude agents --json` |
 
 Every command that starts or steers a cloud session begins with `cd <clone> &&`; the Bash tool's working directory does not carry over between calls.
+
+**Every worker runs in `auto` permission mode**, local and cloud, so it works unattended while Claude still refuses dangerous actions. Never start a worker with `bypassPermissions` or `--dangerously-skip-permissions`.
+
+- `claude --bg` (path 4): `--permission-mode auto` on the command; honoured.
+- `claude --cloud` (path 2): `--permission-mode auto` after the brief (`claude --cloud "<brief>" --permission-mode auto`); the CLI accepts it there and creates the session, while `claude --cloud --permission-mode auto "<brief>"` fails with `Error: --cloud requires a description`. Checked on 2026-09-26 with Claude Code 2.1.283: the session starts in **Auto** (the docs only describe the session's mode selector on claude.ai/code). Where the organisation or model does not offer Auto, the session starts in another mode that the manager cannot see; a cloud session in Accept edits still runs unattended, because cloud sessions pre-approve file edits.
+- Agent tool (paths 1 and 3): a subagent inherits the manager's mode when the manager runs in `auto`. Run the manager in `auto` (the default for interactive sessions in current Claude Code); when it is in another mode, ask the user to switch it (Shift+Tab) before dispatching an Agent-tool worker.
+- Do not put `permissions.defaultMode: "auto"` in the repository's `.claude/settings.json`: a project-level `auto` is ignored by local sessions, and cloud sessions do not read permission settings from the repository at all.
+- Auto can be unavailable: the organisation turned it off (`permissions.disableAutoMode`), the model does not support it, or it was switched off server-side. Then stop and ask the user, with `AskUserQuestion`, which mode workers should use.
 
 Never exceed the concurrency cap. Never give two workers tasks that share files: such tasks belong in one group (§0). Never dispatch two lanes whose `Owns` lists overlap.
 

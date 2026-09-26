@@ -18,15 +18,15 @@ Always dispatch to the cloud. The local paths are a fallback, not an equal choic
 
 ## Cloud session via the Agent tool
 
-The Agent tool accepts `isolation: "remote"`, which launches the agent in a remote cloud environment. It always runs in the background and its availability is gated by plan and organisation policy. The completion notification carries the agent's final report; ask the worker to end with its pull request URL so the manager can find it. If the call is refused, fall through to the next path.
+The Agent tool accepts `isolation: "remote"`, which launches the agent in a remote cloud environment. It inherits the manager's permission mode (run the manager in `auto`). It always runs in the background and its availability is gated by plan and organisation policy. The completion notification carries the agent's final report; ask the worker to end with its pull request URL so the manager can find it. If the call is refused, fall through to the next path.
 
 ## Cloud session via the CLI
 
 Source: the Claude Code on the web documentation (code.claude.com/docs/en/claude-code-on-the-web).
 
 ```bash
-claude --cloud "<brief text>"                                # new cloud session for the current repo
-claude --cloud --environment <ccpool_...> "<brief text>"     # run on a specific self-hosted environment
+claude --cloud "<brief text>" --permission-mode auto         # new cloud session for the current repo, in auto mode
+claude --cloud "<brief text>" --environment <ccpool_...> --permission-mode auto   # on a specific self-hosted environment
 claude -p "<follow-up>" --cloud <session_id|url>             # queue one message into a running session, then exit
 claude -p "<follow-up>" --cloud <session_id> --output-format json   # {ok, session_id, url}
 claude --teleport <session_id>                               # pull the session's branch and history into this terminal
@@ -34,12 +34,13 @@ claude --teleport <session_id>                               # pull the session'
 
 Facts that shape dispatch:
 
+- `--cloud` takes the description (the brief) as its own value, so the brief goes right after it and every other flag after the brief. `claude --cloud --permission-mode auto "<brief>"` fails with `Error: --cloud requires a description` (observed with 2.1.283); `claude --cloud "<brief>" --permission-mode auto` creates the session.
 - `claude --cloud "<task>"` creates a new cloud session for the **current directory's GitHub remote at the current branch**. It clones the remote, not the local checkout: push first, and start from the branch the workers should base on (normally the default branch). One repository per session. Each invocation is an independent session, so several tasks can be started back to back.
 - **Always `cd` into a local clone of the target repository in the same command.** The manager's own working directory is usually a different repository (the plugin repo, a notes repo, the directory Claude Code was started in), and `--cloud` reads the remote of the current directory — dispatching from the wrong directory silently starts a session on the wrong repository. Every dispatch command therefore begins `cd /path/to/<clone> && claude --cloud …`, and the Bash tool's working directory does not persist between calls, so the `cd` is repeated in each one. If the user has no local clone of the target repository, ask for the path or clone it first; do not dispatch from a directory whose `git remote -v` you have not checked.
 - **`--cloud` requires a TTY.** Run from a plain background Bash call it exits 1 with `Error: --cloud requires an interactive terminal. Non-interactive invocations (piped stdout, --init-only, --sdk-url) run locally and would silently ignore --cloud.` Give it a pseudo-terminal with `script`, which exists on macOS and Linux:
 
   ```bash
-  cd /path/to/<clone> && script -q <typescript-file> claude --cloud "$(cat <brief-file>)" </dev/null
+  cd /path/to/<clone> && script -q <typescript-file> claude --cloud "$(cat <brief-file>)" --permission-mode auto </dev/null
   ```
 
   `</dev/null` stops it waiting on stdin; `<typescript-file>` in the scratchpad captures the output. Keep the brief in a file and pass it with `$(cat …)` rather than inlining a multi-hundred-line string in the command.
@@ -50,12 +51,12 @@ Facts that shape dispatch:
 - Session title: the cloud session takes its title from the brief's first line, but **rewrites it** — it may keep only part of the line and change its capitalisation (`factory <bundle> task 2: <title>` became `Add-mcp-start-session-tool task 2`). Never assume the listing name equals the brief's first line: read the `Created cloud session: <title>` line from the output and confirm it with `ListAgents`, then store that exact string as `agent_name`.
 - Results: the session pushes a `claude/`-prefixed branch when it reaches a stopping point and stays open — it ignores the branch name the brief asks for, so plan and monitoring must match on `claude/*` plus the `task N1, N2, …:` (or `task N:`, `lane L:`) title, never on the `factory/` branch name alone. Pull requests are normally created from the web session's **Create PR** button; `gh` has been available and authenticated inside cloud sessions (workers have opened pull requests, replied to review threads and re-requested review), but this is not guaranteed, so the brief asks for a pull request when possible and otherwise a pushed branch plus the report in the final message. The manager then opens the pull request itself with `gh pr create --head <branch>`.
 - A worker keeps pushing after its first commits: a branch appearing is not the end of the work. Judge "finished" by the pull request, or by commits having stopped for a good while, not by the first push.
-- Cloud sessions carry only what the cloud environment provides: no user-level plugins, no `~/.myspec` credentials. `MYSPEC_API_TOKEN` must be set on the environment if the worker needs MySpec. Permission modes available in the cloud are Accept edits, Plan, and Auto; the session runs unattended in Accept edits, so the brief must be complete.
+- Cloud sessions carry only what the cloud environment provides: no user-level plugins, no `~/.myspec` credentials. `MYSPEC_API_TOKEN` must be set on the environment if the worker needs MySpec. Permission modes available in the cloud are Accept edits, Plan, and Auto (Auto only when the organisation allows it and the model supports it; bypass is not offered). Workers are started with `--permission-mode auto` after the brief; on 2026-09-26 (2.1.283) a session started this way showed **Auto** in its selector on claude.ai/code and reported running in Auto mode itself, although the docs only describe setting the mode there. A session left in Accept edits still runs unattended, because cloud sessions pre-approve file edits, so the brief must be complete either way.
 - Sessions expire after inactivity and are reclaimed; reopening from claude.ai/code restores the conversation. Rate limits are shared with the whole account; parallel sessions consume them proportionately.
 
 ## Local worktree via the Agent tool
 
-Fallback only (see Choosing a path). `isolation: "worktree"` gives the subagent its own git worktree; the worktree is cleaned up automatically if it made no changes. Dispatch with `run_in_background: true` (a plain Agent call blocks until the subagent returns) and wait for the completion notification. Several worktree subagents may run at once as long as their files are disjoint.
+Fallback only (see Choosing a path). The subagent inherits the manager's permission mode when the manager runs in `auto`, so run the manager in `auto`. `isolation: "worktree"` gives the subagent its own git worktree; the worktree is cleaned up automatically if it made no changes. Dispatch with `run_in_background: true` (a plain Agent call blocks until the subagent returns) and wait for the completion notification. Several worktree subagents may run at once as long as their files are disjoint.
 
 ## Local worktree via a background CLI session
 
