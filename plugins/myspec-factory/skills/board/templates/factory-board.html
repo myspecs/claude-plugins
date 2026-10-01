@@ -381,7 +381,13 @@
       idb.appendChild(el("span", "mono muted", id));
       idb.appendChild(el("h3", "", b.title || ("tasks " + (b.tasks || []).join(", "))));
       head.appendChild(idb);
-      var pill = el("span", "pill " + (b.status || ""), b.status || "unknown");
+      // The worker's report can be newer than the manager's card: let it move a running card along.
+      var status = b.status || "unknown";
+      if (status === "running" || status === "pushed") {
+        if (r.phase === "blocked") status = "blocked";
+        else if (r.pr || ["pr-open", "review-round", "final"].indexOf(r.phase) >= 0) status = "pr-open";
+      }
+      var pill = el("span", "pill " + status, status);
       head.appendChild(pill);
       card.appendChild(head);
 
@@ -426,6 +432,7 @@
         var nx = el("p", "next");
         nx.appendChild(el("strong", "", "Manager next: "));
         nx.appendChild(document.createTextNode(b.next));
+        if (b.updated_at) nx.appendChild(el("span", "muted", " (" + ago(b.updated_at) + ")"));
         card.appendChild(nx);
       }
       openQs.filter(function (e) { return e.from === id; }).forEach(function (e) {

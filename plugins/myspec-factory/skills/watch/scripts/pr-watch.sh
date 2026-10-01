@@ -12,10 +12,12 @@
 #   --since         ignore PRs created before this time. Pass the session's `started_at`
 #                   from the registry so an older PR with the same title (another bundle,
 #                   or the PR of a redispatched worker) is never picked up. Also selects the
-#                   branches shown: every origin claude/* or factory/* branch whose tip commit
-#                   is at or after this time (read with `git fetch` + `git for-each-ref`), so a
-#                   watch re-armed after the worker pushed still shows the worker's branch.
-#                   Without --since, branches are those that appeared after the watch started.
+#                   branches shown before the PR exists: every origin claude/* or factory/* branch
+#                   whose tip commit is at or after this time (read with `git fetch` +
+#                   `git for-each-ref`), so a watch re-armed after the worker pushed still shows
+#                   the worker's branch. Without --since, branches are those that appeared after
+#                   the watch started. Once the PR exists, only its head branch is shown (from
+#                   the PR, so a deleted branch still shows), not other sessions' branches.
 #   --reviewer      the reviewer's GitHub login (the registry's `policy.reviewer`).
 #                   approved_head then counts that login's reviews only; default: any reviewer.
 #   --rerequest     needs --reviewer. When the reviewer has reviewed an older head of an open,
@@ -23,7 +25,8 @@
 #                   `gh pr edit <n> --add-reviewer <reviewer>` once for the current head.
 #
 # Lines:
-#   <time> branches=[<branch@sha8 ...>] PR #<n> state=<OPEN|MERGED|CLOSED> draft=<bool> head=<sha> review=<decision|NONE> approved_head=<yes|no|none> failing=[<checks>] pending=<n>
+#   <time> branches=[<branch@sha8 ...>] no PR yet
+#   <time> branches=[<PR head branch@sha8>] PR #<n> state=<OPEN|MERGED|CLOSED> draft=<bool> head=<sha> review=<decision|NONE> approved_head=<yes|no|none> failing=[<checks>] pending=<n>
 #            approved_head: yes = the latest APPROVED review is on the current head; no = that
 #            approval is on an older commit (the head changed after it); none = no approval.
 #   <time> re-requested review from <reviewer> on <head8>   -- only with --rerequest
@@ -109,11 +112,12 @@ jq_pr='[.[] | select(.title | test("^'"$prefix"'([^0-9]|$)"; "i")) | select("'"$
   | [(.number | tostring), .headRefOid, .state, (.isDraft | tostring),
      (if (.reviewDecision // "") == "" then "NONE" else .reviewDecision end),
      ([.statusCheckRollup[]? | select((.conclusion // .state) as $c | ["FAILURE","TIMED_OUT","ERROR","STARTUP_FAILURE","ACTION_REQUIRED"] | index($c)) | (.name // .context)] | join(",")),
-     ([.statusCheckRollup[]? | select(((.status // "COMPLETED") != "COMPLETED") or ((.state // "") as $s | ["PENDING","EXPECTED","QUEUED","IN_PROGRESS"] | index($s)))] | length | tostring)]
+     ([.statusCheckRollup[]? | select(((.status // "COMPLETED") != "COMPLETED") or ((.state // "") as $s | ["PENDING","EXPECTED","QUEUED","IN_PROGRESS"] | index($s)))] | length | tostring),
+     .headRefName]
   | join("\u001f")'
 
 repo=""          # owner/name, read once
-pr_num="" pr_head="" pr_state="" pr_draft=""
+pr_num="" pr_head="" pr_state="" pr_draft="" pr_branch=""
 last_review_commit=""   # commit of --reviewer's latest submitted review
 cur=""
 
@@ -121,7 +125,7 @@ cur=""
 # so the fields survive for the re-request step.
 snap() {
   local new="" pr sha ref name reviews approved f_review f_fail f_pend
-  pr_num="" pr_head="" pr_state="" pr_draft="" last_review_commit=""
+  pr_num="" pr_head="" pr_state="" pr_draft="" pr_branch="" last_review_commit=""
   if [ -n "$since" ]; then
     if ! new=$(branches_since); then
       cur="github-unreachable (git fetch)"
@@ -143,7 +147,7 @@ $out
 EOF
   fi
   if ! pr=$(gh pr list --state all --limit 30 --search "$prefix in:title" \
-      --json number,title,state,isDraft,createdAt,headRefOid,reviewDecision,statusCheckRollup --jq "$jq_pr" 2>/dev/null); then
+      --json number,title,state,isDraft,createdAt,headRefOid,headRefName,reviewDecision,statusCheckRollup --jq "$jq_pr" 2>/dev/null); then
     cur="github-unreachable (gh pr list)"
     return
   fi
@@ -151,7 +155,7 @@ EOF
     cur="branches=[${new% }] no PR yet"
     return
   fi
-  IFS=$'\037' read -r pr_num pr_head pr_state pr_draft f_review f_fail f_pend <<EOF
+  IFS=$'\037' read -r pr_num pr_head pr_state pr_draft f_review f_fail f_pend pr_branch <<EOF
 $pr
 EOF
   if [ -z "$repo" ] && ! repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null); then
@@ -172,6 +176,8 @@ EOF
     last_review_commit=$(printf '%s\n' "$reviews" | awk -v who="$reviewer" '
       NF == 3 && tolower($1) == tolower(who) && $2 != "PENDING" { c = $3 } END { print c }')
   fi
+  # With a PR, show only its head branch: other claude/* branches belong to other sessions.
+  new="$pr_branch@$(printf '%s' "$pr_head" | cut -c1-8) "
   cur="branches=[${new% }] PR #$pr_num state=$pr_state draft=$pr_draft head=$(printf '%s' "$pr_head" | cut -c1-8) review=$f_review approved_head=$approved failing=[$f_fail] pending=$f_pend"
 }
 

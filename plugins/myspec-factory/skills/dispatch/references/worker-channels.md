@@ -6,9 +6,9 @@ Every way the manager can send to, hear from, watch, or take over a worker, and 
 
 | Channel | Command | Needs | Proves |
 |---|---|---|---|
-| Remote Control message | `SendMessage` to the row's name from `ListAgents` | Manager connected to Remote Control (`claude --remote-control "factory <bundle>"` or `/remote-control`); worker listed as `cloud` | Delivery to the session only. Not that it was read or acted on — new commits or replies are the proof |
-| CLI steer | `cd <clone> && claude -p "<message>" --cloud <session_id>` | Session id from `.specs/<bundle>/factory-sessions.json` | Same: one message queued, then the command exits |
-| Board message + doorbell | An entry in `mail/sfm~<worker id>` (answer, decision, relay, steer), then a one-line `SendMessage` or `claude -p` naming it | The repository's factory board, and a worker whose report does not say `- Board: unavailable` | Durable. The worker's `cursors/<worker id>` moving past the entry proves it was read; its `ack` entry proves it acted |
+| CLI steer (the cloud channel) | `cd <clone> && claude -p "$(cat <message-file>)" --cloud <session_id> </dev/null` | Session id from `.specs/<bundle>/factory-sessions.json` | Delivery only: one message queued, then the command exits. New commits, replies or a board `ack` are the proof |
+| Remote Control message (local workers only) | `SendMessage` to the row's name from `ListAgents` | Manager connected to Remote Control; a local `claude --bg` worker | Same. Never for cloud workers: it left cloud sessions waiting on a human (the `board` skill §5) |
+| Board message + doorbell | An entry in `mail/sfm~<worker id>` (answer, decision, relay, steer), then a doorbell through the channel above that carries the same full text | The repository's factory board, and a worker whose report does not say `- Board: unavailable` | Durable. The worker's `cursors/<worker id>` moving past the entry proves it was read; its `ack` entry proves it acted |
 | Pull-request review | `gh pr review`, `gh pr comment`, inline comments | The worker's pull request exists and its brief told it to watch reviews | Durable, and the worker can answer in the same place |
 | Redispatch | A new session with the failure output added to the brief | — | Use only when the session has ended, expired, or reported `BLOCKED` on its pull request; a question on the board keeps the session |
 
@@ -19,13 +19,13 @@ Claude Code's Auto-fix subscribes a cloud session to the pull request's GitHub e
 | Turn it on | How |
 |---|---|
 | The worker, on its own pull request (default) | The brief tells it to select **Auto-fix** in the session's CI status bar as soon as the pull request exists |
-| The manager, on a running worker | `SendMessage` or `claude -p "watch PR #<n> and auto-fix CI failures and review comments" --cloud <session_id>` |
+| The manager, on a running worker | `claude -p "watch PR #<n> and auto-fix CI failures and review comments" --cloud <session_id>` |
 | The manager, from a checkout | `/autofix-pr` while on the pull request's branch — spawns a cloud session and enables it in one step |
 | Any existing pull request | Give a session the pull-request URL and ask it to auto-fix |
 
 Facts that matter to the manager: Auto-fix needs the Claude GitHub App installed on the repository (the `setup` skill checks this); it is a per-pull-request toggle, cleared from the same CI status bar; it does not react to merge conflicts caused by an advancing base branch, so a rebase is still asked for explicitly; and its review replies post under the account's GitHub user, labelled as Claude Code. In a repository where a pull-request comment can trigger deploys or other privileged automation, tell the user before enabling it. Auto-fix never merges, and neither does anything else the manager arms: auto-merge is forbidden in every form — `gh pr merge --auto`, GitHub's auto-merge toggle, merge queues — because the decision to merge belongs to the manager under the agreed policy, or to the user. Record `autofix: on` (or why not) in the registry entry.
 
-Put the content on the board and send only the doorbell when the run has a board. Otherwise write the message so it can be answered without a reply channel: "push a fix", "reply on the review thread", "put `BLOCKED: <reason>` as a pull-request comment". Record what was sent, and on which channel, in the registry entry's `notes`.
+With a board, put the message on the board and send a doorbell that carries the same full text (the `board` skill §5): workers often act on the doorbell without opening the board. Without one, write the message so it can be answered without a reply channel: "push a fix", "reply on the review thread", "put `BLOCKED: <reason>` as a pull-request comment". Record what was sent, and on which channel, in the registry entry's `notes`.
 
 ## Hear from a worker
 
@@ -48,7 +48,7 @@ Put the content on the board and send only the doorbell when the run has a board
 | `Monitor` on `board-tick.sh` | A line every 10 minutes while a worker is working: the cue to read the factory board, which wakes nobody by itself. Stopped as soon as no worker is working |
 | Board comment watch | Set up at every run start and after a restart (`board` skill §3): the owner's **Send to Claude** on a board comment wakes the manager. Plain comments, resolves and worker writes do not |
 | Task notifications | Agent-tool workers and background Bash commands |
-| `ListAgents` | Which cloud sessions exist and whether each is `running` or `idle` right now |
+| `ListAgents` | Which cloud sessions exist and whether each is `running` or `idle` right now (listing only; message cloud workers with `claude -p`) |
 
 A watch that expires with no events is a suspect watch: check the state directly before reporting quiet. See the monitoring rules in `cloud-vs-local.md` for the filter mistakes that cause silent watches.
 

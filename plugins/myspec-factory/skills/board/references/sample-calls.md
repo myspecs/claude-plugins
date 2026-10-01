@@ -1,6 +1,6 @@
 # Factory board: sample calls
 
-Every board call the manager makes, verbatim; fill the `<placeholders>`. Shapes and rules are in `protocol.md`; the order of the steps is in `SKILL.md`. The `Artifact`, `ArtifactData`, `ArtifactComments` and `SendMessage` calls were exercised against a live board with a manager session and a `claude --bg` worker; the `claude -p --cloud` doorbell was not.
+Every board call the manager makes, verbatim; fill the `<placeholders>`. Shapes and rules are in `protocol.md`; the order of the steps is in `SKILL.md`. The `Artifact`, `ArtifactData`, `ArtifactComments` and `SendMessage` calls were exercised against a live board with a manager session and a `claude --bg` worker; the `claude -p --cloud` doorbell was exercised with cloud workers in a factory run (2026-09).
 
 Placeholders: `<url>` the board URL, `<run key>` from `registry.py … artifact`, `<id>` a worker id such as `w:tasks-4-5-7`, `<worker key>` from `registry.py new-key`, `<now>` from `date -u +%Y-%m-%dT%H:%M:%SZ`, `<v>` the `version` your last read or write of that document returned.
 
@@ -151,18 +151,26 @@ Leave `origin` out when the answer is the manager's own. Kinds the manager sends
 
 ## Doorbell
 
-```
-SendMessage({ to: "<agent_name from the registry>",
-              message: "Software Factory Manager: board message sfm~<id>#2 (decision) is waiting for you. Read it on the factory board and answer there." })
-```
-
-Without Remote Control, or when the session left the listing:
+The rule is in SKILL.md §5: a cloud worker is rung only with `claude -p … --cloud`, and the doorbell carries the whole instruction. Write it to a file first (a permission hook may block a command line that quotes a rebase or a lease-protected push):
 
 ```bash
-cd <clone> && claude -p "Software Factory Manager: board message sfm~<id>#2 (decision) is waiting for you. Read it on the factory board and answer there." --cloud <session_id>
+cat > <scratchpad>/doorbell-<id>-2.md <<'EOF'
+Software Factory Manager: decision sfm~<id>#2 for task 4 (also on the factory board): <the full decision>.
+Do now: <what to change, and the exact commands when there are any>.
+Then: one push, update the Factory report, re-request review from <reviewer>, and send an `ack` with re "sfm~<id>#2" on the board. Never merge.
+EOF
+cd <clone> && claude -p "$(cat <scratchpad>/doorbell-<id>-2.md)" --cloud <session_id> </dev/null
 ```
 
-The worker's `cursors/<id>.reads["sfm~<id>"]` reaching 2 proves it read the entry; its `ack` entry proves it acted.
+`</dev/null` keeps `claude -p` from waiting three seconds for stdin. It prints `Sent to cloud session.` with the `Session ID:` and `View:` lines.
+
+A local `claude --bg` worker gets the same text through Remote Control instead:
+
+```
+SendMessage({ to: "<agent_name from ListAgents>", message: "<the same text>" })
+```
+
+The worker's `cursors/<id>.reads["sfm~<id>"]` reaching 2 proves it read the entry; its `ack` entry, or the push the message asked for, proves it acted.
 
 ## Comment threads
 
@@ -189,7 +197,18 @@ Record what the read found, in the same batch as the rest of the cursor update: 
 
 ## Cleanup
 
-After a merged worker (`<v>` from your last read of each document):
+After a merged worker, read every document again first: the worker may have written after your last read (an `ack`, its final report), and then a pin fails and nothing is deleted. An unpinned delete of an existing document is refused too, so pin each entry to the version this read returns:
+
+```
+ArtifactData({ action: "get", url: "<url>", collection: "board",   doc_id: "<id>" })
+ArtifactData({ action: "get", url: "<url>", collection: "reports", doc_id: "<id>" })
+ArtifactData({ action: "get", url: "<url>", collection: "mail",    doc_id: "<id>~sfm" })
+ArtifactData({ action: "get", url: "<url>", collection: "mail",    doc_id: "sfm~<id>" })
+ArtifactData({ action: "get", url: "<url>", collection: "cursors", doc_id: "<id>" })
+ArtifactData({ action: "get", url: "<url>", collection: "cursors", doc_id: "sfm" })
+```
+
+Handle any entry you had not read (SKILL.md §5), then delete (`<v>` from these reads):
 
 ```
 ArtifactData({

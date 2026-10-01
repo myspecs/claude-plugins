@@ -36,11 +36,14 @@ Every worker session the manager starts is recorded in a local registry so the m
 - `task`: the group's task numbers as one string (`"4,5,7"`, what `add-session --task "4,5,7"` stores), or a number for a single-task worker (branch `factory/<bundle>/task-<N>`).
 - Lane workers (manager-planned `tasks.md` with a `## Branch Plan`): add `"lane": <L>` and `"tasks": [<N1>, <N2>, …]`, set `task` to the first task of the lane, and expect branch `factory/<bundle>/lane-<L>`.
 - `path`: `cloud-agent` (Agent tool, remote), `cloud-cli` (`claude --cloud`), `worktree-agent`, or `worktree-cli` (`claude --bg`).
-- `agent_name`: the name the session shows in `ListAgents` while the manager is connected to Remote Control (the brief's first line); `SendMessage` uses it. `null` until seen.
+- `agent_name`: the name the session shows in `ListAgents` while the manager is connected to Remote Control (the brief's first line, as the session rewrote it). It identifies the row in `ListAgents`; only a local `claude --bg` worker is messaged through it (`SendMessage`), never a cloud worker. `null` until seen.
 - `session_id`: the cloud session id (`session_...` or `cse_...`), the background agent id, or the `claude --bg` id. Store the bare id; the `View:` line's query string (`?from=cli&m=0`) is dropped when saving the URL.
 - `status`: `running`, `pushed` (branch seen, no pull request yet), `pr-open`, `blocked`, `merged`, `failed`, `redispatched`.
 - `autofix`: `on` once the worker (or the manager) enabled Auto-fix for the pull request, `unavailable` with the reason in `notes`, `unknown` before a pull request exists.
 - `worker_id`, `worker_key`: the worker's identity on the factory board (the `board` skill). The id is `w:` plus the branch suffix (`w:tasks-4-5-7`, `w:task-12`, `w:lane-2`), with `.r2`, `.r3` on a redispatch; the key is an identifier from `registry.py new-key`, not a secret. Absent when the run has no board.
+- `merge_sha`: the merge commit once the pull request merged (what `postmerge-watch.sh` watched).
+- `hold_until`: a release hold, as one line (`released: PR #1659 (b0984fb3) in production`); `null` once lifted. The pull request stays a draft with a `HOLD:` first line while it is set (`integrate` §3).
+- `stacked_on`: the pull request this worker's branch builds on and that pull request's head when the worker started (`1659@e9141e78`). After the parent squash-merges, the worker rebases with `git rebase --onto origin/<base> <that head>` (the brief's `## Stacked on PR #<p>`).
 - Append a new entry on redispatch rather than overwriting; set the old entry's status to `redispatched`.
 
 ## Run policy and contract notes
@@ -151,24 +154,24 @@ python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>
 |---|---|
 | `show` | Print the registry |
 | `add-session --task --title --path --session-id --url --branch --started-at [--notes] [--worker-id --worker-key]` | Append a session entry with `status: running`; a `--worker-id` without `--worker-key` gets a fresh key |
-| `set --session <index, last, task list or task> key=value…` | Update `status`, `pr`, `branch`, `autofix`, `verified_sha`, `agent_name`, `cloud_title`, `worker_id` or `worker_key` |
+| `set --session <session id, worker id, index, last, task list or task> key=value…` | Update `status`, `pr`, `branch`, `autofix`, `verified_sha`, `merge_sha`, `hold_until`, `stacked_on`, `agent_name`, `cloud_title`, `worker_id` or `worker_key` |
 | `artifact --url --published-at [--run-key]` | Record the repository's factory board for this run and in `.specs/factory-board.json`; prints the run key |
 | `board` | Print the board URL to reuse (the `CLAUDE.md`/`AGENTS.md` board block, else this registry, else `.specs/factory-board.json`; source on stderr); exit 1 when none. The registry file need not exist yet |
 | `claude-md --url [--target]` | Write or replace the board block in the repository's `CLAUDE.md` (`AGENTS.md` when only that exists; created when neither does), never touching text outside the markers. Committing it is a separate step the user agrees to |
 | `whois --from <id> --key <key>` | Check a board message's sender against the registry: prints `sfm` or the session; exit 1 on a mismatch |
 | `new-key` | Print a fresh worker key (no `--file` needed) |
-| `note --session <index, last, task list or task> "text"` | Append to the entry's `notes` |
+| `note --session <session id, worker id, index, last, task list or task> "text"` | Append to the entry's `notes` |
 | `stream --token-id --prefix --expires-at [--revoked-at]` | Record the stream token (never the URL) |
 | `stream-seq N` | Record `stream.last_seq` |
 | `policy key=value…` | Set run policy keys |
 | `contract <key> "text"` | Add or replace a `contract_notes` entry |
 | `log --run-log <path> "text"` | Append one line to the run log |
 
-`--session` takes an index from `show`, `last`, a group's task list (`"4,5,7"`), or one task number, which finds the newest entry carrying that task (a group's list or a lane's `tasks`); a bare number is read as an index only when no entry carries it. It refuses any value that contains a stream URL.
+`--session` takes a session id (`session_…`, `cse_…`) or a worker id (`w:…`), matched exactly; an index from `show`; `last`; a group's task list (`"4,5,7"`); or one task number, which finds the entry carrying that task (a group's list or a lane's `tasks`), skipping entries marked `redispatched`. A bare number is read as an index only when no entry carries it. When two live entries carry the same task (a task split across workers, or carried by a convergence group too), the command refuses and lists them instead of guessing: pass the session id. Prefer the session id in every `set` and `note` once the session exists; a guessed match once wrote a `verified_sha` onto the wrong entry. `add-session` warns when a task it records is already carried by a live entry. Every subcommand refuses any value that contains a stream URL.
 
 ## Using the registry
 
-- Steer: look up the entry whose `task` list holds the task; with a board, write the message into `mail/sfm~<worker_id>` first and send only its doorbell. With Remote Control connected, `SendMessage` to `agent_name` (confirm it in `ListAgents` first); otherwise `claude -p "<message>" --cloud <session_id>`. Record what was sent and how in `notes`.
+- Steer: look up the entry whose `task` list holds the task; with a board, write the message into `mail/sfm~<worker_id>` first, then ring the doorbell with the same full text (`board` skill §5: `claude -p … --cloud <session_id>` for a cloud worker, `SendMessage` to `agent_name` only for a local `claude --bg` worker). Record what was sent and how in `notes`.
 - Check: open `url`, or `/tasks` in an interactive session; `claude --teleport <session_id>` to pull the branch locally.
 - Integrate: match pull requests to entries by `branch` or by the task numbers in the title (`task 4, 5, 7:`); set `pr` and `status`.
 - Resume after a manager restart: read the registry first; entries with `status: "running"` are sessions to check before dispatching anything new.

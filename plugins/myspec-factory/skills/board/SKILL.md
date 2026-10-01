@@ -55,7 +55,7 @@ At the start of every run, and after every manager restart:
 2. `ArtifactData` `get` `run/meta`: the repository (`repo`) and bundle of the run on the board, and its `status`. A new board has no `run/meta` yet. Compare with this repository (`owner/repo` from `git remote -v` in the clone) and this bundle.
 3. `status: "running"` for this bundle, with this registry's `artifact.run_key`: a restart. Resume: keep the run key (live workers accept only the key in their brief), do not re-seed, and go to step 8.
    `status: "running"` for another bundle or another repository: another run still uses the board (a shared board carries one run at a time); ask the user whether it is over and stop until they answer. Never take the board from a live run.
-4. Documents left by an earlier run (`board/*`, `reports/*`, `mail/*`, `cursors/*` of workers this run did not start): check each as §7 step 1 says, report anything still open to the user, then delete them as §7 step 2 does.
+4. Documents left by an earlier run (`board/*`, `reports/*`, `mail/*`, `cursors/*` of workers this run did not start): read and check each as §7 steps 1 and 2 say, report anything still open to the user, then delete them as §7 step 3 does.
 5. `registry.py … board` did not name `CLAUDE.md` or `AGENTS.md` as its source: record the link in the repository as §2 step 5 says.
 6. Record the board with a fresh run key: `registry.py … artifact --url <url> --published-at <now> --run-key "$(registry.py new-key)"`.
 7. Seed the run in one batch (sample-calls.md § Start a run): `run/meta` (`set` on a new board, `update` otherwise, keeping `history`), `mail/sfm~all-workers`, `cursors/sfm`.
@@ -82,10 +82,16 @@ At every loop step, on every `board-tick`, `pr-watch.sh` or feed line, and when 
    - `question` with `needs: sfm`: an `answer` entry in `mail/sfm~<id>`, then the doorbell.
    - `question` with `needs: owner`, or any spec doubt: ask with `AskUserQuestion` (the owner may answer on the board instead), record the answer as a Clarification, write a `decision` entry, ring the doorbell. Under `policy.minor_defaults: manager`, decide a low-impact detail yourself as the dispatch skill's redispatch rules say, and mark the Clarification `(manager default, owner may reverse)`. The dispatch pause of the spec gate still applies; the blocked worker itself continues in its session.
    - A coupling another worker must match: a `relay` entry in that worker's mailbox (or `sfm~all-workers`), and `registry.py … contract`.
-   - Mirror status changes into `board/<id>`; log real changes to `factory-run.md`.
+   - Mirror status changes into `board/<id>` (`status`, `verified_sha`, `next`) whenever the registry entry changes: pull request opened, each verification pass, a decision relayed, a hold set or lifted, the merge. The card takes the pull request, branch, head and phase from the worker's own report, so only these three are yours to keep current; the page shows how old `next` is. Log real changes to `factory-run.md`.
 5. Update `cursors/sfm`: `reads`, and `threads` with each thread's comment count, state and resolver (drop deleted threads with `{"__delete__": true}`). A read that found nothing new is not reported.
 
-Doorbell (sample-calls.md § Doorbell): `SendMessage` to the worker's `agent_name`, else `claude -p … --cloud <session_id>`. When the worker's cursor has not passed the entry after two ticks and `ListAgents` shows it idle, ring once through the other channel, then follow the dispatch skill's steering rules.
+Doorbell (sample-calls.md § Doorbell). This is the rule in full; other files summarise it and point here:
+
+- A cloud worker: `claude -p "$(cat <file>)" --cloud <session_id>` only. Never `SendMessage`: in a factory run (2026-09) a `SendMessage` to a cloud session left it waiting on a human until the owner opened the session, while `claude -p … --cloud` reached the same sessions without that problem.
+- A local `claude --bg` worker: `SendMessage` to its `agent_name` from `ListAgents`.
+- Put the whole instruction in the doorbell, not only a pointer: the entry's text, what to do now, the commands it needs, and where to answer (an `ack` on the board, the pull request). Workers often act on the doorbell without opening the board; the board entry stays the durable record.
+- Write the message to a file in the scratchpad and pass it as `"$(cat <file>)"`, never inline: messages quote commands (a rebase, a lease-protected push) that a permission hook may block when they appear in the command line itself.
+- When the worker's cursor has not passed the entry after two ticks and it has pushed nothing since, ring once more, then follow the dispatch skill's steering rules.
 
 ## 6. Comment threads
 
@@ -104,9 +110,10 @@ Doorbell (sample-calls.md § Doorbell): `SendMessage` to the worker's `agent_nam
 
 The manager maintains the board so the same link can serve every later piece of work: after each completed piece of work (every merged pull request, every closed run) the board holds only open work and the one-line history of earlier runs. Only the manager removes anything, and only what is already recorded somewhere durable. After a worker's pull request merges, or the worker is replaced by a redispatch, or its lane is abandoned:
 
-1. Check that nothing is lost: the Factory report is on the pull request; every owner decision is a Clarification; every coupling is in `contract_notes`; no `question` from or to the worker is open.
-2. Delete its five documents and its cursor key in one batch (sample-calls.md § Cleanup).
-3. Threads about the worker that are still open: one sent to Claude gets a one-line signed follow-up ("done: merged in PR #<n>", with `acknowledge_duplicate: true` when a Claude reply stands) and is resolved. Threads already resolved are left alone. A thread not sent to Claude cannot be resolved or deleted by any Claude tool: list it for the user once, saying they can resolve or delete it in the board's comment panel. Then drop the worker's threads from `cursors/sfm.threads`.
+1. Read the worker's five documents again (`get` each, or `list` each collection), even if the tick Monitor is stopped: workers keep writing after their last push (an `ack`, a final report), and a pinned delete of a document you read before fails. Handle every new entry first.
+2. Check that nothing is lost: the Factory report is on the pull request; every owner decision is a Clarification; every coupling is in `contract_notes`; no `question` from or to the worker is open.
+3. Delete its five documents and its cursor key in one batch, each pinned to the version you just read (sample-calls.md § Cleanup).
+4. Threads about the worker that are still open: one sent to Claude gets a one-line signed follow-up ("done: merged in PR #<n>", with `acknowledge_duplicate: true` when a Claude reply stands) and is resolved. Threads already resolved are left alone. A thread not sent to Claude cannot be resolved or deleted by any Claude tool: list it for the user once, saying they can resolve or delete it in the board's comment panel. Then drop the worker's threads from `cursors/sfm.threads`.
 
 After a wave, drop each `sfm~all-workers` entry every current worker's cursor has passed and whose fact is in `contract_notes`; `last_seq` keeps counting.
 

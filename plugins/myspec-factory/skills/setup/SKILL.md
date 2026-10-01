@@ -35,7 +35,7 @@ Also check for `mcp__plugin_myspec-mcp_myspec__create_stream_token`. Present (se
 
 ## 1b. Manager: Remote Control (required for cloud visibility)
 
-The manager sees and messages its cloud workers only while its own session is connected to Remote Control: `ListAgents` then lists the account's Claude Code on the web sessions (labelled `cloud`) and `SendMessage` reaches them by name through Anthropic's servers. Without it, cloud sessions are invisible to the manager and steering falls back to the `claude -p ... --cloud <id>` CLI.
+The manager sees its cloud workers only while its own session is connected to Remote Control: `ListAgents` then lists the account's Claude Code on the web sessions (labelled `cloud`) and whether each is busy or idle. Messages to cloud workers always go through `claude -p "<message>" --cloud <session_id>`, with or without Remote Control (the `board` skill §5 says why `SendMessage` is not used for them).
 
 Tell the user to start the manager one of these ways (all need a claude.ai sign-in, not an API key; on Team and Enterprise an Owner must enable Remote Control):
 
