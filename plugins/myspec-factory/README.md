@@ -135,7 +135,7 @@ Restart Claude Code after updating. To remove: `/plugin uninstall myspec-factory
 | `watch` | Used by the manager | Open the project's live event feed and react to each event; polls when the feed is not available |
 | `plan` | Used by the manager | Build the task board, group related tasks into one worker each, and plan waves of groups; write `tasks.md` when a brownfield bundle has none, as one lane or up to 3 parallel lanes by size |
 | `dispatch` | Used by the manager | Start one worker per group of related tasks; cloud first, local worktree as fallback |
-| `integrate` | Used by the manager | Verify and merge worker pull requests, mark tasks done on MySpec, run the milestone gate |
+| `integrate` | Used by the manager | Verify and merge worker pull requests (a gate script checks approval on the latest commit, checks, threads, holds, base drift and migration order), mark tasks done on MySpec, run the milestone gate |
 | `board` | Used by the manager | Publish or reuse the factory board, read and answer workers' posts, handle your comments, and clean up finished work; holds the page template and sample calls |
 | `shift` | Used by the manager | Draft and create a scheduled cloud routine for one unattended shift |
 
@@ -214,7 +214,8 @@ Add `.specs/` to the repository's `.gitignore`.
 | The manager and local workers both lose MySpec access (`Refresh token rejected`, then `Not authenticated`) | They shared one browser sign-in. Give local workers their own `MYSPEC_API_TOKEN` in `.claude/settings.local.json`, then reconnect the manager's server in `/mcp`. |
 | A worker's token fails with `API token exchange failed … invalid, disabled, or expired` | The token is revoked, expired, or from a different organization. Create a token in the organization that owns the project. |
 | Cloud dispatch is refused | Your plan or organization does not allow cloud sessions. Enable Claude Code on the web, or let the manager use local worktrees. |
-| Cloud workers do not show up, or the manager cannot message them | Connect Remote Control (`/remote-control`) in the manager session. Without it the manager can still steer workers with `claude -p "<message>" --cloud <session_id>`. |
+| Cloud workers do not show up in the manager's agent list | Connect Remote Control (`/remote-control`) in the manager session. The manager messages cloud workers with `claude -p "<message>" --cloud <session_id>` either way. |
+| A cloud worker sits "waiting on a human" | Open its session on claude.ai/code and let it continue. The manager messages cloud workers only with `claude -p … --cloud`, which does not cause this. |
 | Cloud workers cannot reach MySpec | Add `MYSPEC_API_TOKEN` to the cloud environment and allow network access to npm and the MySpec hosts. Briefs already include the needed spec text, so this only matters when a worker must read more. |
 | Workers have no MySpec tools | The repository settings from `setup` are missing or not pushed. Cloud sessions clone the branch from GitHub, so commit and push `.claude/settings.json`. If workers still have no tools, run `setup` again; it offers a root `.mcp.json` as a fallback. |
 | Two sets of MySpec tools in a worker | The repository enables `myspec-mcp` and also declares `myspec` in a root `.mcp.json`. Keep the plugin entry and remove the `.mcp.json` server. |

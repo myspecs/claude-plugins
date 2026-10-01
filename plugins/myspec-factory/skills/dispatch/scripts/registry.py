@@ -12,8 +12,8 @@ Usage (--file is required by every subcommand except `log` and `new-key`):
                           --url U --branch B --started-at ISO [--notes N]
                           [--worker-id w:tasks-45-46-47 [--worker-key K]]   key generated when omitted
   registry.py set --file F --session SEL key=value ...
-        keys: status, pr (int), branch, autofix, verified_sha, agent_name, cloud_title, worker_id,
-              worker_key; value null -> null
+        keys: status, pr (int), branch, autofix, verified_sha, merge_sha, hold_until, stacked_on,
+              agent_name, cloud_title, worker_id, worker_key; value null -> null
   registry.py artifact --file F --url https://claude.ai/... --published-at ISO [--run-key K]
         records the repository's factory board for this run (run key generated when omitted, kept
         when already set; never a stream URL) and in .specs/factory-board.json, a local fallback
@@ -38,9 +38,12 @@ Usage (--file is required by every subcommand except `log` and `new-key`):
   registry.py contract --file F key "text"               sets contract_notes[key]
   registry.py log --run-log .specs/<bundle>/factory-run.md "text"   appends "- <ISO now> text"
 
-SEL is a session index as shown by `show` (0-based), `last`, or a task string ("52", "45,46,47");
-a single task number also matches the group or lane entry that carries it ("46" finds "45,46,47"),
-and is read as an index only when no entry carries it. A task string matching several entries picks the newest.
+SEL is a session id (session_..., cse_...), a worker id (w:...), a session index as shown by `show`
+(0-based), `last`, or a task string ("52", "45,46,47"). Session and worker ids match exactly. A single
+task number also matches the group or lane entry that carries it ("46" finds "45,46,47"), and is read as
+an index only when no entry carries it. Entries marked `redispatched` are skipped when another entry
+carries the task; when two live entries carry it, the command refuses and lists them: pass the session
+id, the worker id or the index instead.
 Exit codes: 0 ok, 1 not found / bad input, 2 refused (stream URL) or usage error.
 """
 import argparse
@@ -52,8 +55,8 @@ import sys
 import tempfile
 
 STATUSES = ("running", "pushed", "pr-open", "blocked", "merged", "failed", "redispatched")
-SET_KEYS = ("status", "pr", "branch", "autofix", "verified_sha", "agent_name", "cloud_title",
-            "worker_id", "worker_key")
+SET_KEYS = ("status", "pr", "branch", "autofix", "verified_sha", "merge_sha", "hold_until", "stacked_on",
+            "agent_name", "cloud_title", "worker_id", "worker_key")
 
 
 def die(msg, code=1):
@@ -148,20 +151,42 @@ def holds_task(s, sel):
     return want in stored.split(",") or want in [str(t) for t in (s.get("tasks") or [])]
 
 
+def describe(i, s):
+    return f"[{i}] task={s.get('task')} status={s.get('status')} session_id={s.get('session_id') or '-'}"
+
+
 def find_session(data, sel):
     sessions = data["sessions"]
     if not sessions:
         die("no sessions in the registry")
     if sel == "last":
         return len(sessions) - 1
+    # Session and worker ids are unique handles: match them exactly, never as task numbers.
+    if sel.startswith(("session_", "cse_", "w:")):
+        key = "worker_id" if sel.startswith("w:") else "session_id"
+        hits = [i for i, s in enumerate(sessions) if s.get(key) == sel]
+        if len(hits) == 1:
+            return hits[0]
+        if not hits:
+            die(f"no session has {key} {sel!r}")
+        die(f"{len(hits)} entries have {key} {sel!r}: " + "; ".join(describe(i, sessions[i]) for i in hits)
+            + ". Pass the index instead")
     if sel.isdigit() and int(sel) < len(sessions) and not any(holds_task(s, sel) for s in sessions):
         return int(sel)
     matches = [i for i, s in enumerate(sessions) if holds_task(s, sel)]
     if matches:
-        return matches[-1]
+        live = [i for i in matches if sessions[i].get("status") != "redispatched"]
+        if len(live) == 1:
+            return live[0]
+        if not live:
+            return matches[-1]
+        # Guessing here once wrote a verified_sha onto the wrong entry: refuse instead.
+        die(f"{sel!r} matches {len(live)} entries: " + "; ".join(describe(i, sessions[i]) for i in live)
+            + ". Pass the session id, the worker id or the index instead")
     if sel.isdigit() and int(sel) < len(sessions):
         return int(sel)
-    die(f"no session matches {sel!r} (use an index from `show`, `last`, or a task string)")
+    die(f"no session matches {sel!r} (use a session id, a worker id, an index from `show`, `last`, "
+        "or a task string)")
 
 
 def new_key():
@@ -228,6 +253,11 @@ def cmd_add_session(a):
         entry["worker_id"] = a.worker_id
         entry["worker_key"] = a.worker_key or new_key()
     guard(entry)
+    for want in str(task).replace(" ", "").split(","):
+        for i, s in enumerate(data["sessions"]):
+            if s.get("status") != "redispatched" and holds_task(s, want):
+                print(f"registry: note: task {want} is also carried by {describe(i, s)}; select entries by "
+                      "session id or worker id from now on", file=sys.stderr)
     data["sessions"].append(entry)
     save(a.file, data)
     extra = f" worker_id={entry['worker_id']} worker_key={entry['worker_key']}" if a.worker_id else ""
