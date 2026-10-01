@@ -14,7 +14,10 @@ Runs every item of the gate from fresh GitHub state and prints one line per item
                is usually skipped by a workflow `paths` filter
   3 threads    no unresolved review thread
   4 merge      the pull request is open, mergeStateStatus is CLEAN, auto-merge is off
-  5 verified   --verified-sha is the head, or only documentation changed after it
+  5 verified   --verified-sha is the head, or only documentation changed after it. Documentation is
+               Markdown-like files (.md, .mdx, .rst, .adoc), docs/ and LICENSE/CHANGELOG/README, except
+               under src/, data/, prompts/, skills/, templates/, agents/, commands/ or output-styles/,
+               where Markdown is shipped content (skill catalogs, prompts, plugin skills). .txt never is
   6 report     not a draft; no BLOCKED: or HOLD: first line; no BLOCKED: or "- Open question:" line in the
                newest Factory report (warns on report lines that say "pending")
   7 base       the base gained nothing in this pull request's areas since its merge base (documentation
@@ -44,7 +47,15 @@ PASS_STATES = {"SUCCESS", "SKIPPED", "NEUTRAL"}
 PENDING_STATES = {"PENDING", "EXPECTED", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED"}
 # Top-level directories that hold one project per subdirectory: the area is two segments deep.
 CONTAINERS = {"projects", "packages", "apps", "services", "libs", "modules", "plugins", "crates"}
-DOC_RE = re.compile(r"\.(md|mdx|txt|rst|adoc)$|(^|/)docs?/|(^|/)(LICENSE|CHANGELOG|README)[^/]*$", re.I)
+# Documentation: Markdown and similar files, a docs/ directory, LICENSE/CHANGELOG/README. Not `.txt`
+# (requirements.txt, CMakeLists.txt). Markdown under a runtime directory is product, not documentation:
+# an agent's skill catalog, prompts, templates, or a plugin's SKILL.md and references.
+DOC_RE = re.compile(r"\.(md|mdx|rst|adoc)$|(^|/)docs?/|(^|/)(LICENSE|CHANGELOG|README)[^/]*$", re.I)
+RUNTIME_RE = re.compile(r"(^|/)(src|data|prompts|skills|templates|agents|commands|output-styles)/", re.I)
+
+
+def is_doc(path):
+    return bool(DOC_RE.search(path)) and not RUNTIME_RE.search(path)
 TEST_RE = re.compile(r"(^|/)(tests?|__tests__|spec|e2e|testdata|fixtures?)/|_test\.go$|\.(test|spec)\.[cm]?[jt]sx?$"
                      r"|(^|/)test_[^/]*\.py$|_test\.py$", re.I)
 
@@ -229,8 +240,8 @@ def main():
                     "re-verify the whole diff from the base")
             else:
                 files = [f for f in git(clone, "diff", "--name-only", v, head).splitlines() if f]
-                tests = [f for f in files if TEST_RE.search(f) and not DOC_RE.search(f)]
-                prod = [f for f in files if not DOC_RE.search(f) and f not in tests]
+                tests = [f for f in files if TEST_RE.search(f) and not is_doc(f)]
+                prod = [f for f in files if not is_doc(f) and f not in tests]
                 if prod:
                     say("FAIL", 5, "verified", f"production files changed after {v[:8]}: {', '.join(prod[:5])}"
                         + (" …" if len(prod) > 5 else "") + "; re-verify those commits")
@@ -266,12 +277,12 @@ def main():
         # 7. Base drift in this pull request's areas, and migration order.
         mb = git(clone, "merge-base", head, f"origin/{base}").strip()
         # Documentation on either side does not change what CI tested, so it never forces an update.
-        mine = [f for f in git(clone, "diff", "--name-only", mb, head).splitlines() if f and not DOC_RE.search(f)]
+        mine = [f for f in git(clone, "diff", "--name-only", mb, head).splitlines() if f and not is_doc(f)]
         areas = sorted({area_of(f) for f in mine} | {x.strip("/") for x in a.paths if x.strip("/")})
         if mb == tip:
             say("PASS", 7, "base", f"the head is on the current {base} tip")
         else:
-            moved = [f for f in git(clone, "diff", "--name-only", mb, tip).splitlines() if f and not DOC_RE.search(f)]
+            moved = [f for f in git(clone, "diff", "--name-only", mb, tip).splitlines() if f and not is_doc(f)]
             hit = [f for f in moved if any(f == ar or f.startswith(ar + "/") for ar in areas)]
             if hit:
                 say("FAIL", 7, "base", f"{base} changed {len(hit)} file(s) in this pull request's areas since its "

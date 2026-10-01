@@ -9,7 +9,8 @@ Usage: clarify.py --file .specs/<bundle>/requirements.md --title "<short title>"
 The section's entries are numbered bullets (`- **C47 — Title** (refs; owner decision, date). Text.`) or
 table rows (`| Q30 | answer | reason |`). Several letters may share the section (C and D); the prefix is
 the most frequent one unless --prefix names another. The new id is the highest number of that prefix
-plus one unless --id is given.
+plus one unless --id is given (its letter must match --prefix when both are given; an --id below the
+current highest fills a gap and leaves the range mentions as they are).
   --title/--text  write a bullet: `- **<id> — <title>** <text>` (bullet sections only)
   --line          write this line as given, with {id} replaced (any style, including table rows)
 The entry goes right after the last entry with the same prefix, so other blocks (D1-D6) stay where
@@ -52,6 +53,10 @@ def main():
             p.error("an entry is one line")
     if a.id and not re.fullmatch(r"[A-Z]\d+", a.id):
         p.error("--id looks like C48 or Q31")
+    if a.prefix and not re.fullmatch(r"[A-Z]", a.prefix):
+        p.error("--prefix is one capital letter, such as C or Q")
+    if a.id and a.prefix and a.id[0] != a.prefix:
+        p.error(f"--id {a.id} does not match --prefix {a.prefix}")
 
     with open(a.file, newline="") as f:
         original = f.read()
@@ -106,7 +111,8 @@ def main():
 
     text = "".join(lines)
     ranges = 0
-    if top:
+    # The range only ever grows: an --id below the current top fills a gap and leaves the mentions alone.
+    if top and int(new_id[1:]) > top:
         old_top = f"{prefix}{top}"
         new_num = int(new_id[1:])
         rng = re.compile(rf"\b{prefix}1(\s?[–-]\s?){prefix}{top}\b")
