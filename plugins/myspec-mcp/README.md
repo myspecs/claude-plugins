@@ -1,12 +1,56 @@
-# myspec-mcp
+# myspec-mcp: Spec Driven Development (SDD) for Claude Code
 
-Connects Claude Code to the [MySpec](https://myspec.dev) platform and adds Spec Driven Development (SDD) skills on top of it. The spec bundle is the source of truth, each acceptance criterion becomes a test, and progress is written back to MySpec where every collaborator sees it.
+**Spec Driven Development (SDD) for Claude Code, powered by [MySpec](https://myspec.dev).** This plugin connects Claude Code to the MySpec platform and adds SDD skills on top of it. The spec bundle is the source of truth, each acceptance criterion becomes a test, and progress is written back to MySpec where every collaborator sees it.
+
+Use it on its own to build a spec one task at a time, or as the base of the [MySpec Software Factory](../myspec-factory/README.md), where a manager session runs many Claude Code workers in parallel.
 
 ## Overview
 
 MySpec is an AI architect that interviews you and produces a spec bundle: `constitution.md`, `requirements.md`, `solution.md`, and `tasks.md` for new projects, or change proposals and requirement deltas for existing codebases (MySpec brownfield and OpenSpec formats).
 
 This plugin registers the official `@myspec/mcp-server` MCP server and adds five skills, so Claude Code can read those specs, build them task by task, check code against the spec, write progress back, write new specs in MySpec's formats, and share a local repository with a MySpec brownfield session.
+
+## What is Spec Driven Development (SDD)?
+
+Spec Driven Development (SDD) means you write down what the software must do before you write the code, and then the code is built and checked against that written spec.
+
+- **The spec comes first.** Requirements, design, and tasks are agreed before coding starts.
+- **The spec is the source of truth.** When the code and the spec disagree, you fix one of them on purpose; you do not let them drift.
+- **Every requirement is testable.** Acceptance criteria are written so each one becomes an automated test.
+- **Progress is visible.** Tasks are marked done in the spec, so everyone sees the same status.
+
+SDD works well with AI coding agents. A clear spec gives the agent the context it needs, keeps it inside the agreed scope, and gives you a way to check its work.
+
+## Spec Driven Development with MySpec and Claude Code
+
+| SDD step | Where it happens | Plugin skill |
+|---|---|---|
+| 1. Specify: describe the product or change | MySpec webapp (AI architect interview) or Claude Code | `spec-authoring` |
+| 2. Review the spec: find gaps, conflicts, unclear wording | Claude Code | `analyze` |
+| 3. Build: one task at a time, tests from acceptance criteria | Claude Code | `implement` |
+| 4. Track progress: mark tasks done on MySpec | Claude Code, written to MySpec | `implement` |
+| 5. Converge: check the code still matches the spec at each milestone | Claude Code | `analyze` |
+| 6. Scale: run many tasks in parallel | Claude Code cloud sessions | [`myspec-factory`](../myspec-factory/README.md) (Software Factory) |
+
+### The spec bundle
+
+| Document | What it holds |
+|---|---|
+| `constitution.md` | Project rules: principles, approved technology, quality and testing standards |
+| `requirements.md` | Functional (FR) and non-functional (NFR) requirements with EARS+ acceptance criteria (`WHEN … THEN … SHALL`) |
+| `solution.md` | The design: modules, data, interfaces, and how each requirement is met |
+| `tasks.md` | Ordered tasks grouped into milestones, each linked to the requirements it covers |
+| `proposal.md` and a requirements delta | For an existing codebase (brownfield): what changes, and which requirements are added, changed, or removed |
+
+New projects (greenfield) use the first four. Changes to existing code (brownfield) use a proposal and a requirements delta, in MySpec's format or the [OpenSpec](https://github.com/Fission-AI/OpenSpec) format.
+
+## Why use this plugin
+
+- **Less rework.** Claude asks about open points before coding instead of guessing.
+- **Tests you can trust.** Each acceptance criterion maps to a named test.
+- **No lost context.** A new session picks up where the last one stopped, from the spec, a local progress note, and git history.
+- **Team-safe writes.** Updates to spec files never overwrite a teammate's newer edit.
+- **Works with existing code.** Brownfield change proposals and OpenSpec changes are supported, and a MySpec session can read your local repository through the reverse bridge.
 
 ## Features
 
@@ -171,6 +215,26 @@ Set these in the shell that starts `claude`:
 | `reverse_mcp_unavailable` in a brownfield session | No reverse bridge is running for your account. Ask Claude to "share this repo with MySpec" (`reverse-bridge` skill). |
 
 More detail, including how to check your active organization: [skills/setup/references/troubleshooting.md](skills/setup/references/troubleshooting.md).
+
+## FAQ
+
+**What is Spec Driven Development (SDD) in Claude Code?**
+A way of working where Claude Code builds from a written spec (requirements, design, tasks) instead of from a loose prompt. This plugin gives Claude Code the tools and skills to read that spec from MySpec, build it task by task, test each acceptance criterion, and record progress.
+
+**Do I need a MySpec account?**
+Yes. The spec bundle lives on MySpec, and the MCP server signs in to it.
+
+**Can I use SDD on an existing codebase?**
+Yes. Use a brownfield change proposal (MySpec or OpenSpec format). Claude can write the proposal from your code, and a MySpec session can read your local repository through the `reverse-bridge` skill.
+
+**Does it work with OpenSpec?**
+Yes. `spec-authoring` writes OpenSpec changes and delta specs, and `implement` can apply them.
+
+**How is this different from the Software Factory?**
+`myspec-mcp` builds a spec in one Claude Code session, one task at a time. [`myspec-factory`](../myspec-factory/README.md) adds a Software Factory Manager that runs many worker sessions in parallel and merges their pull requests. The factory needs this plugin.
+
+**Will Claude change my spec without asking?**
+No. Checks are read-only. Claude adds clarifications or gap tasks only after you approve, and it marks a task done only after its tests pass.
 
 ## License
 
