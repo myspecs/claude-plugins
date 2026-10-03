@@ -1,6 +1,47 @@
-# myspec-factory
+# myspec-factory: a Software Factory for Spec Driven Development (SDD)
 
-Turns Claude Code into a **Software Factory Manager**: a manager that runs a MySpec spec bundle to completion. It groups related tasks and starts one Claude Code worker session per group, checks and merges the pull requests they open, marks tasks done on MySpec, and stops at each milestone for your review.
+**A Software Factory for Claude Code, built on Spec Driven Development (SDD).** This plugin turns Claude Code into a **Software Factory Manager**: a manager that runs a [MySpec](https://myspec.dev) spec bundle to completion. It groups related tasks and starts one Claude Code worker session per group, checks and merges the pull requests they open, marks tasks done on MySpec, and stops at each milestone for your review.
+
+## What is a Software Factory?
+
+A Software Factory is a setup where many AI coding agents build one product at the same time, under one manager, from one shared spec.
+
+- **One spec.** The MySpec spec bundle (constitution, requirements, solution, tasks) says what to build. It is the single source of truth, as in any Spec Driven Development (SDD) workflow.
+- **One manager.** A Claude Code session with the Software Factory Manager output style plans the work, hands it out, checks the results, and merges them. It never writes feature code.
+- **Many workers.** Each worker is a separate Claude Code session (in the cloud, or in a local git worktree) that builds a group of tasks on its own branch and opens one pull request.
+- **Gates, not trust.** Nothing is merged until it passes the merge gate, and every milestone stops for your review.
+
+### Spec Driven Development at factory scale
+
+| | One session (`myspec-mcp`) | Software Factory (`myspec-factory`) |
+|---|---|---|
+| Who writes code | Your Claude Code session | Parallel worker sessions |
+| Tasks at a time | One | One group per worker, many workers per wave |
+| How work lands | Commits in your checkout | One reviewed pull request per group |
+| Who marks tasks done | The session, after its tests pass | The manager, after the merge gate passes |
+| Best for | Small specs, hands-on work | Large specs, many independent tasks, unattended shifts |
+
+```mermaid
+flowchart LR
+  S[MySpec spec bundle] --> M[Software Factory Manager]
+  M -->|plan waves| W1[Worker 1]
+  M -->|plan waves| W2[Worker 2]
+  M -->|plan waves| W3[Worker 3]
+  W1 -->|pull request| G{Merge gate}
+  W2 -->|pull request| G
+  W3 -->|pull request| G
+  G -->|merge + mark tasks done| S
+  G -->|milestone| R[Your review]
+```
+
+## Why use the Software Factory
+
+- **Faster delivery.** Independent tasks are built in parallel instead of one after another.
+- **Spec-first by design.** Nothing starts until the spec passes its check, and every pull request is judged against its tasks' acceptance criteria and the constitution.
+- **Safe merges.** No auto-merge, no force pushes, no bypassing branch protection; one merge at a time, after review, checks, and CI/CD.
+- **You stay in control.** You choose how much the manager may do on its own, answer questions in one place (the factory board), and approve every milestone.
+- **Clear costs.** The manager tells you how many sessions each wave starts before it starts them.
+- **Runs while you sleep.** Scheduled shifts integrate finished work and start the next wave.
 
 ## Overview
 
@@ -230,6 +271,29 @@ Add `.specs/` to the repository's `.gitignore`.
 | A scheduled shift ran but did nothing | Read the routine's run log. The usual causes are a missing `MYSPEC_API_TOKEN` in the cloud environment, or a repository that was not prepared with `/myspec-factory:setup`. |
 
 For MySpec sign-in and connection errors, see the [myspec-mcp troubleshooting](../myspec-mcp/README.md#troubleshooting).
+
+## FAQ
+
+**What is a Software Factory in Claude Code?**
+A way to build a whole spec with many Claude Code sessions at once. One manager session plans and checks the work; worker sessions write the code and open pull requests.
+
+**How does the Software Factory relate to Spec Driven Development (SDD)?**
+It is SDD at scale. The spec bundle on MySpec decides what gets built, every task traces back to a requirement, every pull request is checked against acceptance criteria, and tasks are marked done in the spec only after they merge.
+
+**Does the manager write code?**
+No. The Software Factory Manager output style forbids it. The manager plans, dispatches, verifies, merges, and reports.
+
+**Do I need cloud sessions?**
+No, but they are recommended. Without Claude Code on the web, the manager starts workers in local git worktrees instead.
+
+**Will it merge pull requests on its own?**
+Only if you allow it. With `ask-each` it asks before every merge. With `merge-on-gate` or `full` it merges on its own, but only after the merge gate passes. Auto-merge is never turned on.
+
+**Can I use it on an existing codebase?**
+Yes. For a brownfield change proposal without `tasks.md`, the manager writes the task list (one lane or up to 3 parallel lanes) and asks you to approve it before uploading.
+
+**What does a run cost?**
+Each worker is a normal Claude Code session on your account and shares its rate limit. The manager states the number of sessions before each wave and keeps to the limit you set.
 
 ## License
 

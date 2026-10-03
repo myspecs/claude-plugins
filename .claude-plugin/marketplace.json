@@ -3,7 +3,7 @@
   "description": "Official MySpec plugins for Claude Code: MySpec MCP server integration and Spec Driven Development workflows",
   "owner": {
     "name": "MySpec Team",
-    "email": "0xgosu@gmail.com"
+    "email": "admin@myspec.dev"
   },
   "plugins": [
     {
