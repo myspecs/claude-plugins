@@ -18,7 +18,7 @@ Always dispatch to the cloud. The local paths are a fallback, not an equal choic
 
 ## Cloud session via the Agent tool
 
-The Agent tool accepts `isolation: "remote"`, which launches the agent in a remote cloud environment. It inherits the manager's permission mode (run the manager in `auto`). It always runs in the background and its availability is gated by plan and organisation policy. The completion notification carries the agent's final report; ask the worker to end with its pull request URL so the manager can find it. If the call is refused, fall through to the next path.
+The Agent tool accepts `isolation: "remote"`, which launches the agent in a remote cloud environment, and `model` (`sonnet` or `opus`), but no effort level: use it only for workers at `medium` effort (`model-and-effort.md`). It inherits the manager's permission mode (run the manager in `auto`). It always runs in the background and its availability is gated by plan and organisation policy. The completion notification carries the agent's final report; ask the worker to end with its pull request URL so the manager can find it. If the call is refused, fall through to the next path.
 
 ## Cloud session via the CLI
 
@@ -26,6 +26,7 @@ Source: the Claude Code on the web documentation (code.claude.com/docs/en/claude
 
 ```bash
 claude --cloud "<brief text>" --permission-mode auto         # new cloud session for the current repo, in auto mode
+claude --cloud "<brief text>" --model opus --effort high --permission-mode auto   # with the worker's model and effort
 claude --cloud "<brief text>" --environment <ccpool_...> --permission-mode auto   # on a specific self-hosted environment
 claude -p "<follow-up>" --cloud <session_id|url>             # queue one message into a running session, then exit
 claude -p "<follow-up>" --cloud <session_id> --output-format json   # {ok, session_id, url}
@@ -35,12 +36,13 @@ claude --teleport <session_id>                               # pull the session'
 Facts that shape dispatch:
 
 - `--cloud` takes the description (the brief) as its own value: nothing may come between `--cloud` and the brief. `claude --cloud --permission-mode auto "<brief>"` fails with `Error: --cloud requires a description` (observed with 2.1.283); `claude --cloud "<brief>" --permission-mode auto` creates the session, and so does `claude --permission-mode auto --cloud "<brief>"` (other flags before `--cloud`; used for every dispatch of a factory run with 2.1.28x, 2026-09).
+- `--model` and `--effort` work with `--cloud` and set the new session's model and effort level, placed after the brief like `--permission-mode` (checked on 2026-10-04 with 2.1.289: `--model sonnet --effort low` started a Sonnet session at low effort). Which ones to pass: `model-and-effort.md`.
 - `claude --cloud "<task>"` creates a new cloud session for the **current directory's GitHub remote at the current branch**. It clones the remote, not the local checkout: push first, and start from the branch the workers should base on (normally the default branch). One repository per session. Each invocation is an independent session, so several tasks can be started back to back.
 - **Always `cd` into a local clone of the target repository in the same command.** The manager's own working directory is usually a different repository (the plugin repo, a notes repo, the directory Claude Code was started in), and `--cloud` reads the remote of the current directory — dispatching from the wrong directory silently starts a session on the wrong repository. Every dispatch command therefore begins `cd /path/to/<clone> && claude --cloud …`, and the Bash tool's working directory does not persist between calls, so the `cd` is repeated in each one. If the user has no local clone of the target repository, ask for the path or clone it first; do not dispatch from a directory whose `git remote -v` you have not checked.
 - **`--cloud` requires a TTY.** Run from a plain background Bash call it exits 1 with `Error: --cloud requires an interactive terminal. Non-interactive invocations (piped stdout, --init-only, --sdk-url) run locally and would silently ignore --cloud.` Give it a pseudo-terminal with `script`, which exists on macOS and Linux:
 
   ```bash
-  cd /path/to/<clone> && script -q <typescript-file> claude --cloud "$(cat <brief-file>)" --permission-mode auto </dev/null
+  cd /path/to/<clone> && script -q <typescript-file> claude --cloud "$(cat <brief-file>)" --model <model> --effort <effort> --permission-mode auto </dev/null
   ```
 
   `</dev/null` stops it waiting on stdin; `<typescript-file>` in the scratchpad captures the output. Keep the brief in a file and pass it with `$(cat …)` rather than inlining a multi-hundred-line string in the command.
@@ -63,14 +65,14 @@ Fallback only (see Choosing a path). The subagent inherits the manager's permiss
 Fallback only (see Choosing a path).
 
 ```bash
-cd <clone> && claude --bg "<brief text>" --worktree tasks-<N1>-<N2> --permission-mode auto   # prompt is POSITIONAL
-cd <clone> && claude --bg "$(cat <brief>)" --mcp-config /tmp/factory-<bundle>/.mcp.json --permission-mode auto
+cd <clone> && claude --bg "<brief text>" --worktree tasks-<N1>-<N2> --model <model> --effort <effort> --permission-mode auto   # prompt is POSITIONAL
+cd <clone> && claude --bg "$(cat <brief>)" --mcp-config /tmp/factory-<bundle>/.mcp.json --model <model> --effort <effort> --permission-mode auto
 claude agents --json     # list background sessions (plain `claude agents` needs a TTY)
 claude attach <id>       # open one interactively
 claude logs <id>         # recent output
 ```
 
-Start every local worker with `--permission-mode auto` so it runs unattended: without it the session stops at the first permission prompt with nobody to answer, and the manager sees a worker that is idle rather than blocked. `auto` lets Claude judge each call and still denies the dangerous ones, unlike `bypassPermissions`, which the factory never uses; the brief's own prohibitions (no merging, no spec edits, no force-push) are what bound the worker.
+Start every local worker with its rung's `--model` and `--effort` (`model-and-effort.md`; the same ladder as cloud workers) and with `--permission-mode auto` so it runs unattended: without it the session stops at the first permission prompt with nobody to answer, and the manager sees a worker that is idle rather than blocked. `auto` lets Claude judge each call and still denies the dangerous ones, unlike `bypassPermissions`, which the factory never uses; the brief's own prohibitions (no merging, no spec edits, no force-push) are what bound the worker.
 
 `--bg` and `-p/--print` conflict — `--print` never starts the attachable session, and the CLI refuses the combination: pass the brief as the positional argument. `claude agents` without `--json` fails when stdout is not a terminal, which it never is from the Bash tool.
 
@@ -102,7 +104,7 @@ A local worker that needs MySpec tools gets a **long-lived personal access token
 
    ```bash
    cd <clone> && MYSPEC_API_TOKEN="$(python3 -c 'import json;print(json.load(open(".claude/settings.local.json"))["env"]["MYSPEC_API_TOKEN"])')" \
-     claude --bg "$(cat <brief>)" --mcp-config /tmp/factory-<bundle>/.mcp.json --permission-mode auto
+     claude --bg "$(cat <brief>)" --mcp-config /tmp/factory-<bundle>/.mcp.json --model <model> --effort <effort> --permission-mode auto
    rm -f /tmp/factory-<bundle>/.mcp.json
    ```
 

@@ -11,6 +11,9 @@ Usage (--file is required by every subcommand except `log` and `new-key`):
   registry.py add-session --file F --task "45,46,47" --title T --path cloud-cli --session-id S
                           --url U --branch B --started-at ISO [--notes N]
                           [--worker-id w:tasks-45-46-47 [--worker-key K]]   key generated when omitted
+                          [--model opus --effort medium [--off-ladder]]     rungs: sonnet/medium, opus/medium,
+                          opus/high, opus/xhigh (references/model-and-effort.md); --off-ladder records a
+                          setting the user chose
   registry.py set --file F --session SEL key=value ...
         keys: status, pr (int), branch, autofix, verified_sha, merge_sha, hold_until, stacked_on,
               agent_name, cloud_title, worker_id, worker_key; value null -> null
@@ -57,6 +60,7 @@ import tempfile
 STATUSES = ("running", "pushed", "pr-open", "blocked", "merged", "failed", "redispatched")
 SET_KEYS = ("status", "pr", "branch", "autofix", "verified_sha", "merge_sha", "hold_until", "stacked_on",
             "agent_name", "cloud_title", "worker_id", "worker_key")
+LADDER = (("sonnet", "medium"), ("opus", "medium"), ("opus", "high"), ("opus", "xhigh"))
 
 
 def die(msg, code=1):
@@ -252,6 +256,14 @@ def cmd_add_session(a):
             die(f"worker id {a.worker_id} is already used; add a redispatch suffix such as .r2", 2)
         entry["worker_id"] = a.worker_id
         entry["worker_key"] = a.worker_key or new_key()
+    if (a.model is None) != (a.effort is None):
+        die("--model and --effort go together", 2)
+    if a.model is not None:
+        if (a.model, a.effort) not in LADDER and not a.off_ladder:
+            rungs = ", ".join(f"{m}/{e}" for m, e in LADDER)
+            die(f"{a.model}/{a.effort} is not on the ladder ({rungs}); pass --off-ladder when the user chose it", 2)
+        entry["model"] = a.model
+        entry["effort"] = a.effort
     guard(entry)
     for want in str(task).replace(" ", "").split(","):
         for i, s in enumerate(data["sessions"]):
@@ -517,6 +529,9 @@ def main():
     s.add_argument("--notes")
     s.add_argument("--worker-id")
     s.add_argument("--worker-key")
+    s.add_argument("--model")
+    s.add_argument("--effort")
+    s.add_argument("--off-ladder", action="store_true")
     s.set_defaults(fn=cmd_add_session)
 
     s = sub.add_parser("set", parents=[common])
