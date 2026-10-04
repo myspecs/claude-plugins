@@ -83,10 +83,10 @@ Use `gh pr list --state open --json number,title,headRefName,labels,statusCheckR
 |------|-------|--------|------|--------------|--------------|
 
 ## Wave 1 (N workers, cost note)
-| Worker | Tasks (in order) | Why grouped | Modules / files | Size | Brief ready |
+| Worker | Tasks (in order) | Why grouped | Modules / files | Size | Model / effort | Brief ready |
 
 ## Lanes (manager-planned bundles only; replaces Wave 1)
-| Lane | Branch | Tasks | Owns | Size | Brief ready |
+| Lane | Branch | Tasks | Owns | Size | Model / effort | Brief ready |
 
 ## Waiting
 | Task | Blocked by |
@@ -97,4 +97,4 @@ Use `gh pr list --state open --json number,title,headRefName,labels,statusCheckR
 - Missing documents, a spec session still running, `TBD`/placeholder text, open questions, CRITICAL or HIGH analyze findings
 ```
 
-State the cost before the manager dispatches: number of sessions, sizes, and that parallel sessions share and multiply rate-limit consumption.
+Fill `Model / effort` from the ladder in the `dispatch` skill's `references/model-and-effort.md`, with a short reason for any worker not on `opus`/`medium`. State the cost before the manager dispatches: number of sessions, sizes, model and effort, and that parallel sessions share and multiply rate-limit consumption.

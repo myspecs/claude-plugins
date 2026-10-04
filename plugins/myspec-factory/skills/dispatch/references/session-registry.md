@@ -27,6 +27,8 @@ Every worker session the manager starts is recorded in a local registry so the m
       "autofix": "unknown",
       "worker_id": "w:tasks-4-5-7",
       "worker_key": "f56fe75a",
+      "model": "opus",
+      "effort": "medium",
       "notes": ""
     }
   ]
@@ -41,6 +43,7 @@ Every worker session the manager starts is recorded in a local registry so the m
 - `status`: `running`, `pushed` (branch seen, no pull request yet), `pr-open`, `blocked`, `merged`, `failed`, `redispatched`.
 - `autofix`: `on` once the worker (or the manager) enabled Auto-fix for the pull request, `unavailable` with the reason in `notes`, `unknown` before a pull request exists.
 - `worker_id`, `worker_key`: the worker's identity on the factory board (the `board` skill). The id is `w:` plus the branch suffix (`w:tasks-4-5-7`, `w:task-12`, `w:lane-2`), with `.r2`, `.r3` on a redispatch; the key is an identifier from `registry.py new-key`, not a secret. Absent when the run has no board.
+- `model`, `effort`: the rung the worker was started with (`model-and-effort.md`), from `add-session --model --effort`. A redispatch after a failure reads it to move one rung up.
 - `merge_sha`: the merge commit once the pull request merged (what `postmerge-watch.sh` watched).
 - `hold_until`: a release hold, as one line (`released: PR #1659 (b0984fb3) in production`); `null` once lifted. The pull request stays a draft with a `HOLD:` first line while it is set (`integrate` §3).
 - `stacked_on`: the pull request this worker's branch builds on and that pull request's head when the worker started (`1659@e9141e78`). After the parent squash-merges, the worker rebases with `git rebase --onto origin/<base> <that head>` (the brief's `## Stacked on PR #<p>`).
