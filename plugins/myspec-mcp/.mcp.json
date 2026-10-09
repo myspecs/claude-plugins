@@ -3,7 +3,7 @@
     "myspec": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@myspec/mcp-server"]
+      "args": ["-y", "@myspec/mcp-server@1.1.0"]
     }
   }
 }

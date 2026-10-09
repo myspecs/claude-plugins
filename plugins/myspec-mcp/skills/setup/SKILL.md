@@ -41,7 +41,7 @@ npx -y @myspec/mcp-server login --org <slug>    # also pin the active organizati
 npx -y @myspec/mcp-server login --paste         # remote box or container: no auto-open
 ```
 
-Notes for `--paste`: the page shows a token shaped like `<code>.<state>`. The user must copy the whole value including the dot, and paste it within 60 seconds of finishing sign-in.
+Notes for `--paste`: the page shows a token shaped like `<code>.<state>`. The user must copy the whole value including the dot, and paste it within 60 seconds of finishing sign-in. The value is pasted into the prompt of the `login --paste` command in the user's own terminal, never into the chat.
 
 After the user confirms, repeat step 2. No Claude Code restart is needed.
 
@@ -61,11 +61,11 @@ For CI, containers, or any session without a browser, use a long-lived API token
 3. Verify the token works before blaming the server. Run this only when the variable is already exported in the shell; never ask the user to paste the token into the chat:
 
    ```bash
-   curl -sS -X POST "https://auth.myspec.dev/api/auth/token/exchange" \
-     -H "x-api-key: $MYSPEC_API_TOKEN" -w '\n%{http_code}\n'
+   curl -sS -o /dev/null -w '%{http_code}\n' -X POST "https://auth.myspec.dev/api/auth/token/exchange" \
+     -H "x-api-key: $MYSPEC_API_TOKEN"
    ```
 
-   200 with an `accessToken` is good. 401 is an unknown, revoked, or expired token. 403 means the token's organization is gone or the owner left it.
+   This prints only the HTTP status; the response body carries a fresh access token and must never be printed into the session. 200 is good. 401 is an unknown, revoked, or expired token. 403 means the token's organization is gone or the owner left it.
 
 Precedence is `MYSPEC_API_TOKEN`, then `apiToken` in `~/.myspec/oauth_creds.json`, then the refresh token saved by `login`. The winner is used exclusively. A rejected token fails the call rather than falling back to another identity.
 

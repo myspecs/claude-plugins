@@ -154,7 +154,7 @@ Restart Claude Code after updating. To remove a plugin: `/plugin uninstall <plug
 | `missing required claims (sub, org)` | Sign in with an organization: `npx -y @myspec/mcp-server login --org <slug>`. |
 | HTTP 401 with `MYSPEC_API_TOKEN` | The token is expired, disabled, or from another organization or environment. Create a new one, and make sure it is exported in the shell that starts `claude`. |
 | Two sets of MySpec tools | A project `.mcp.json` also declares `myspec`. Remove that entry and keep the plugin. |
-| A tool mentioned in a skill is missing | Your cached server is old. Compare `npx -y @myspec/mcp-server --version` with `npm view @myspec/mcp-server version`. If it is older, run `npx -y @myspec/mcp-server@latest --version`, then restart. |
+| A tool mentioned in a skill is missing | The plugin pins an exact server version in `plugins/myspec-mcp/.mcp.json`. Run `/plugin marketplace update myspec`, update the plugin to get the newer pin, then restart. |
 | `/plugin update` does nothing | Run `/plugin marketplace update myspec` first, then update the plugin and restart. |
 | **Software Factory Manager** is not in the output style list | Make sure `myspec-factory` is installed and enabled, then restart. In settings files use the full name `myspec-factory:Software Factory Manager`. |
 | The manager cannot see or message cloud workers | Connect Remote Control (`/remote-control`). Without it, the manager steers workers with `claude -p "<message>" --cloud <session_id>`. |
