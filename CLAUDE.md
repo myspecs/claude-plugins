@@ -60,8 +60,10 @@ Skill names are lowercase with hyphens and do not repeat the plugin name. Only e
 - Declare servers in `.mcp.json` at the plugin root:
 
   ```json
-  { "mcpServers": { "myspec": { "type": "stdio", "command": "npx", "args": ["-y", "@myspec/mcp-server"] } } }
+  { "mcpServers": { "myspec": { "type": "stdio", "command": "npx", "args": ["-y", "@myspec/mcp-server@1.1.0"] } } }
   ```
+
+- Pin the server to an exact version so installing the plugin never pulls a new server on start. To upgrade, bump the pin and the plugin `version` in the same commit.
 
 - Never put credentials or `${ENV}` references to credentials in plugin config. Stdio servers inherit the environment of the shell that launched Claude Code, so users export tokens there.
 - Tools from a plugin server are named `mcp__plugin_<plugin>_<server>__<tool>`; for this plugin, `mcp__plugin_myspec-mcp_myspec__<tool>`. State the prefix once per SKILL.md and use bare tool names elsewhere.
