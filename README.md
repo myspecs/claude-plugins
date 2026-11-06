@@ -22,7 +22,7 @@ Details: [plugins/myspec-mcp/README.md](plugins/myspec-mcp/README.md).
 
 ### myspec-factory
 
-Turns Claude Code into a **Software Factory Manager**. The manager does not write code. It plans waves of tasks from `tasks.md`, groups related tasks and starts one Claude Code worker session per group (in the cloud, or in a local git worktree when the cloud is not allowed or not available), checks and merges their pull requests, marks tasks done on MySpec, and stops at each milestone for your review.
+Turns Claude Code into a **Software Factory Manager**. The manager does not write code. It runs a team of Claude Code agents (in the cloud, or on your machine when the cloud is not allowed or not available): you choose how many, and the manager groups related tasks from `tasks.md`, shares them out evenly between the agents, gives each agent one group at a time, checks and merges their pull requests, marks tasks done on MySpec, and stops at each milestone for your review.
 
 It ships the **Software Factory Manager** output style and seven skills:
 
@@ -30,10 +30,10 @@ It ships the **Software Factory Manager** output style and seven skills:
 |---|---|
 | `/myspec-factory:setup` | Check MySpec and GitHub access, cloud readiness, and repository settings before the first run; pick a MySpec project and open its event feed |
 | `watch` | Open the project's live event feed so changes arrive without polling |
-| `plan` | Build the task board and group ready tasks into waves |
-| `dispatch` | Start one worker session per group of related tasks |
-| `integrate` | Verify and merge worker pull requests, mark tasks done, run the milestone gate |
-| `board` | Keep the repository's factory board: one private claude.ai page where workers post progress and questions and the manager answers |
+| `plan` | Build the task board, group related tasks, and share them out evenly between the agents |
+| `dispatch` | Run the team: start the agents and give each its next group of tasks |
+| `integrate` | Verify and merge the agents' pull requests, mark tasks done, run the milestone gate |
+| `board` | Keep the repository's factory board: one private claude.ai page where agents post progress and questions and the manager answers |
 | `shift` | Schedule an unattended shift as a cloud routine |
 
 Details: [plugins/myspec-factory/README.md](plugins/myspec-factory/README.md).
@@ -45,7 +45,7 @@ Only the two `setup` skills are slash commands. The other skills start on their 
 - Claude Code with plugin support (`/plugin` works).
 - Node.js 22 or newer, with `npx` on your `PATH`.
 - A MySpec account.
-- For `myspec-factory`: the GitHub CLI (`gh`) signed in with push and pull-request rights on the target repository. Cloud workers also need Claude Code on the web and the Claude GitHub App on the repository.
+- For `myspec-factory`: the GitHub CLI (`gh`) signed in with push and pull-request rights on the target repository. Cloud agents also need Claude Code on the web and the Claude GitHub App on the repository.
 
 ## Installation
 
@@ -105,7 +105,7 @@ No restart is needed after signing in. Never put a token in `.mcp.json` or any f
    ```
 
    The style is not turned on by default. Sessions that should write code themselves keep the default style.
-3. Start the manager with Remote Control, so it can see and message its cloud workers:
+3. Start the manager with Remote Control, so it can see its cloud agents and whether each is busy:
 
    ```bash
    claude --remote-control "factory <bundle>"
@@ -129,7 +129,7 @@ Commit this to the repository's `.claude/settings.json`. Team members are offere
 }
 ```
 
-Install `myspec-factory` only on the machine that runs the manager, not in shared settings, so worker sessions do not load the manager skills.
+Install `myspec-factory` only on the machine that runs the manager, not in shared settings, so agent sessions do not load the manager skills.
 
 Also add `.specs/` to the repository's `.gitignore`; that folder holds spec files downloaded from MySpec and local progress notes.
 
@@ -157,8 +157,8 @@ Restart Claude Code after updating. To remove a plugin: `/plugin uninstall <plug
 | A tool mentioned in a skill is missing | Your cached server is old. Compare `npx -y @myspec/mcp-server --version` with `npm view @myspec/mcp-server version`. If it is older, run `npx -y @myspec/mcp-server@latest --version`, then restart. |
 | `/plugin update` does nothing | Run `/plugin marketplace update myspec` first, then update the plugin and restart. |
 | **Software Factory Manager** is not in the output style list | Make sure `myspec-factory` is installed and enabled, then restart. In settings files use the full name `myspec-factory:Software Factory Manager`. |
-| The manager cannot see or message cloud workers | Connect Remote Control (`/remote-control`). Without it, the manager steers workers with `claude -p "<message>" --cloud <session_id>`. |
-| Local workers and the manager both lose MySpec access (`Refresh token rejected`) | Both shared the same browser sign-in. Give local workers their own `MYSPEC_API_TOKEN` in the repository's gitignored `.claude/settings.local.json`, then reconnect the manager's server in `/mcp`. |
+| The manager cannot see its cloud agents | Connect Remote Control (`/remote-control`). Without it, the manager still messages agents with `claude -p "<message>" --cloud <session_id>`. |
+| Local agents and the manager both lose MySpec access (`Refresh token rejected`) | Both shared the same browser sign-in. Give local agents their own `MYSPEC_API_TOKEN` in the repository's gitignored `.claude/settings.local.json`, then reconnect the manager's server in `/mcp`. |
 
 More cases:
 

@@ -1,6 +1,6 @@
-# Session registry
+# Team registry
 
-Every worker session the manager starts is recorded in a local registry so the manager can find the session id again to steer, check, or teleport it. The registry is a cache of dispatch facts, never the task board: task status still comes from `tasks.md` checkboxes and pull requests.
+Every agent session the manager starts, and every assignment it gives one, is recorded in a local registry so the manager can find the session again to send it work, steer, check, or teleport it. The registry is a cache of dispatch facts, never the task board: task status still comes from `tasks.md` checkboxes and pull requests.
 
 ## Location
 
@@ -12,42 +12,69 @@ Every worker session the manager starts is recorded in a local registry so the m
 {
   "project_id": "<uuid>",
   "bundle": "<bundle>",
-  "sessions": [
+  "team": [
     {
-      "task": "4,5,7",
-      "title": "Checkout API",
-      "path": "cloud-cli",
-      "session_id": "session_01DiUkqY2kzbUbDmW1w96rfi",
-      "agent_name": "factory checkout tasks 4, 5, 7: Checkout API",
-      "url": "https://claude.ai/code/session_01DiUkqY2kzbUbDmW1w96rfi",
-      "branch": "factory/<bundle>/tasks-4-5-7",
-      "started_at": "2026-09-12T13:05:00Z",
-      "status": "running",
-      "pr": null,
-      "autofix": "unknown",
-      "worker_id": "w:tasks-4-5-7",
+      "agent": "a1",
+      "name": "Ada",
+      "title": "Ada (a1)",
+      "cloud_title": "Ada (a1)",
+      "worker_id": "w:a1",
       "worker_key": "f56fe75a",
+      "session_id": "session_01DiUkqY2kzbUbDmW1w96rfi",
+      "url": "https://claude.ai/code/session_01DiUkqY2kzbUbDmW1w96rfi",
+      "path": "cloud-cli",
+      "agent_name": "Ada (a1)",
       "model": "opus",
       "effort": "medium",
+      "started_at": "2026-09-12T13:05:00Z",
+      "status": "running",
+      "queue": ["9,10", "14"],
+      "assignments": [
+        {
+          "id": "a1-1",
+          "seq": 1,
+          "tasks": "4,5,7",
+          "title": "Checkout API",
+          "branch": "factory/<bundle>/tasks-4-5-7",
+          "assigned_at": "2026-09-12T13:05:00Z",
+          "status": "pr-open",
+          "pr": 57,
+          "autofix": "on",
+          "verified_sha": null,
+          "merge_sha": null,
+          "hold_until": null,
+          "stacked_on": null,
+          "notes": ""
+        }
+      ],
       "notes": ""
     }
   ]
 }
 ```
 
-- `task`: the group's task numbers as one string (`"4,5,7"`, what `add-session --task "4,5,7"` stores), or a number for a single-task worker (branch `factory/<bundle>/task-<N>`).
-- Lane workers (manager-planned `tasks.md` with a `## Branch Plan`): add `"lane": <L>` and `"tasks": [<N1>, <N2>, …]`, set `task` to the first task of the lane, and expect branch `factory/<bundle>/lane-<L>`.
-- `path`: `cloud-agent` (Agent tool, remote), `cloud-cli` (`claude --cloud`), `worktree-agent`, or `worktree-cli` (`claude --bg`).
-- `agent_name`: the name the session shows in `ListAgents` while the manager is connected to Remote Control (the brief's first line, as the session rewrote it). It identifies the row in `ListAgents`; only a local `claude --bg` worker is messaged through it (`SendMessage`), never a cloud worker. `null` until seen.
-- `session_id`: the cloud session id (`session_...` or `cse_...`), the background agent id, or the `claude --bg` id. Store the bare id; the `View:` line's query string (`?from=cli&m=0`) is dropped when saving the URL.
-- `status`: `running`, `pushed` (branch seen, no pull request yet), `pr-open`, `blocked`, `merged`, `failed`, `redispatched`.
-- `autofix`: `on` once the worker (or the manager) enabled Auto-fix for the pull request, `unavailable` with the reason in `notes`, `unknown` before a pull request exists.
-- `worker_id`, `worker_key`: the worker's identity on the factory board (the `board` skill). The id is `w:` plus the branch suffix (`w:tasks-4-5-7`, `w:task-12`, `w:lane-2`), with `.r2`, `.r3` on a redispatch; the key is an identifier from `registry.py new-key`, not a secret. Absent when the run has no board.
-- `model`, `effort`: the rung the worker was started with (`model-and-effort.md`), from `add-session --model --effort`. A redispatch after a failure reads it to move one rung up.
-- `merge_sha`: the merge commit once the pull request merged (what `postmerge-watch.sh` watched).
-- `hold_until`: a release hold, as one line (`released: PR #1659 (b0984fb3) in production`); `null` once lifted. The pull request stays a draft with a `HOLD:` first line while it is set (`integrate` §3).
-- `stacked_on`: the pull request this worker's branch builds on and that pull request's head when the worker started (`1659@e9141e78`). After the parent squash-merges, the worker rebases with `git rebase --onto origin/<base> <that head>` (the brief's `## Stacked on PR #<p>`).
-- Append a new entry on redispatch rather than overwriting; set the old entry's status to `redispatched`.
+One `team` entry per agent **session**. `agent` is the team slot (`a1`, `a2`, …) and stays for the run; a replacement session for the same slot is a new entry.
+
+- `name`: the agent's person-style name (`Ada`), one per slot, unique for the run, kept by replacement sessions (the dispatch skill's §3a). `title`: the session title the manager sets, `<name> (<slot>)` or `<name> (<slot>.r2)` for a replacement. `cloud_title`: the title the session actually shows, when it differs (`agent … cloud_title=…`).
+
+- `worker_id`, `worker_key`: the agent's identity on the factory board (the `board` skill): `w:a<k>`, with `.r2`, `.r3` for a replacement session; the key is an identifier from `registry.py new-key` (or generated by `add-agent`), not a secret. A run without a board keeps them anyway; they cost nothing.
+- `session_id`: the cloud session id (`session_...` or `cse_...`) or the `claude --bg` id. Store the bare id; the `View:` line's query string (`?from=cli&m=0`) is dropped when saving the URL.
+- `path`: `cloud-cli` (`claude --cloud`) or `worktree-cli` (`claude --bg`).
+- `agent_name`: the name the session shows in `ListAgents` while the manager is connected to Remote Control (normally its `title`). It identifies the row in `ListAgents`; only a local `claude --bg` agent is messaged through it (`SendMessage`), never a cloud agent. `null` until seen.
+- `model`, `effort`: the rung the session was started with (`model-and-effort.md`); fixed for the session. A replacement after a failure reads it to move one rung up.
+- `status`: `running` (has an open assignment), `idle` (waiting for an assignment), `ended` (the session ended or expired), `replaced` (a newer session took the slot; its board messages are invalid), `retired` (removed from the team).
+- `queue`: the planned task groups, in order, that this agent will get next (the dispatch skill's §0b). A plan, not a promise: rebalancing moves groups between queues.
+- `assignments`: one per group handed to the agent, each one branch and one pull request:
+  - `id`: `a<k>-<n>`, numbered per slot across replacement sessions; `seq`: a run-wide counter (`last` selects the highest).
+  - `tasks`: the group's task numbers as one string (`"4,5,7"`, or `"12"`).
+  - `status`: `running`, `pushed` (branch seen, no pull request yet), `pr-open`, `blocked`, `merged`, `failed`, `reassigned` (moved to a replacement session).
+  - `autofix`: `on` once the agent (or the manager) enabled Auto-fix for the pull request, `unavailable` with the reason in `notes`, `unknown` before a pull request exists.
+  - `verified_sha`: the head the manager's last verification pass covered. `integrate`'s ready-to-merge gate compares it with the pull request's head.
+  - `merge_sha`: the merge commit once the pull request merged (what `postmerge-watch.sh` watched).
+  - `hold_until`: a release hold, as one line (`released: PR #1659 (b0984fb3) in production`); `null` once lifted. The pull request stays a draft with a `HOLD:` first line while it is set (`integrate` §3).
+  - `stacked_on`: the pull request this assignment's branch builds on and that pull request's head when the assignment started (`1659@e9141e78`). After the parent squash-merges, the agent rebases with `git rebase --onto origin/<base> <that head>` (the assignment's `## Stacked on PR #<p>`).
+
+A registry written by myspec-factory 1.x has a `sessions` list (one worker per group). The script keeps it but never reads it and says so on every call; finish those pull requests by hand and start the team fresh.
 
 ## Run policy and contract notes
 
@@ -55,7 +82,7 @@ The run-start answers live under a top-level `policy` key; `dispatch` and `integ
 
 ```json
 "policy": {
-  "concurrency": 3,
+  "team_size": 3,
   "merge_method": "squash",
   "autonomy": "merge-on-gate",
   "cloud_dispatch": "allowed",
@@ -68,10 +95,10 @@ The run-start answers live under a top-level `policy` key; `dispatch` and `integ
 }
 ```
 
-- `autonomy`: `ask-each` (ask before every merge and dispatch), `merge-on-gate` (merge on the ready-to-merge gate without asking; ask before dispatch), `full` (also dispatch dependent waves, lanes and planned PR splits inside the current milestone without asking; a new milestone always waits for the milestone gate's question). Update it when the user changes the level mid-run. At `full`, the milestone gate may also dispatch convergence follow-ups without asking when every one of them is test-only (`integrate` §6).
+- `team_size`: the number of agents in the team (the dispatch skill's §0b). Update it when the user changes it mid-run; an agent removed from the team is `retired` once its open assignments merged or moved.
+- `autonomy`: `ask-each` (ask before every merge and every new assignment), `merge-on-gate` (merge on the ready-to-merge gate without asking; ask before starting the team and before each new assignment), `full` (also start the team and send every next assignment, rebalance included, inside the current milestone without asking; a new milestone always waits for the milestone gate's question). Update it when the user changes the level mid-run. At `full`, the milestone gate may also assign convergence follow-ups without asking when every one of them is test-only (`integrate` §6).
 - `reviewer`: the bare GitHub login whose approval gates the merge (it is passed to `pr-watch.sh --reviewer`). Keep any explanation elsewhere, for example in `contract_notes`.
 - `minor_defaults`: `owner` (default: every doubt and worker deviation goes to the owner) or `manager`. With `manager`, the manager decides doubts and deviations that are low-impact UX or implementation details — wording and labels, ordering and tie-break rules, counting conventions, test-only choices — and change no API or wire shape, data model, security or authorization, requirement scope, or user-visible flow. It records each as a numbered Clarification marked `(manager default, owner may reverse)`, relays it to the worker, and lists them in the next report and in the milestone summary. Anything else still goes to the owner.
-- Each session entry also carries `verified_sha`: the head the manager's last verification pass covered. `integrate`'s ready-to-merge gate compares it with the pull request's head.
 
 ## Factory board
 
@@ -86,7 +113,7 @@ The run-start answers live under a top-level `policy` key; `dispatch` and `integ
 }
 ```
 
-`published_at` is when this run started on the board (the board itself may be much older). The run key is the manager's identifier on the board (every `sfm` message entry carries it). Each new run passes a fresh `--run-key`; an `artifact` call without it keeps the key, which is what a resumed run needs, because live workers accept only the key in their brief. The board URL is a private claude.ai link, not a credential, and goes into every brief. One board serves every bundle of the repository. Its durable home is the managed block in the repository's `CLAUDE.md` (`registry.py … claude-md`, committed with the user's agreement); `artifact` also writes `.specs/factory-board.json` (`url`, `last_bundle`) as a local fallback. `registry.py … board` prints the URL to reuse from the block, else this registry, else that file, and names its source on stderr.
+`published_at` is when this run started on the board (the board itself may be much older). The run key is the manager's identifier on the board (every `sfm` message entry carries it). Each new run passes a fresh `--run-key`; an `artifact` call without it keeps the key, which is what a resumed run needs, because live agents accept only the key in their brief. The board URL is a private claude.ai link, not a credential, and goes into every brief. One board serves every bundle of the repository. Its durable home is the managed block in the repository's `CLAUDE.md` (`registry.py … claude-md`, committed with the user's agreement); `artifact` also writes `.specs/factory-board.json` (`url`, `last_bundle`) as a local fallback. `registry.py … board` prints the URL to reuse from the block, else this registry, else that file, and names its source on stderr.
 
 ## Stream token (never the URL)
 
@@ -116,7 +143,7 @@ Filled from `list_spec_file` at watch start, refreshed on every `spec_file.creat
 
 ## Capturing the id
 
-A new `claude --cloud` session prints its title and URL but not a `Session ID:` line:
+A new `claude --cloud` agent prints its title and URL but not a `Session ID:` line:
 
 ```
 Created cloud session: <rewritten title>
@@ -124,7 +151,7 @@ View: https://claude.ai/code/session_01KtmAVhNWdS6WFWFhguY46R?from=cli&m=0
 Resume with: claude --teleport session_01KtmAVhNWdS6WFWFhguY46R
 ```
 
-Take the id from the `View:` or `Resume with:` line, and `agent_name` from the `Created cloud session:` line (confirm it with `ListAgents`). The output is a terminal capture, so strip escapes first: `sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' <file> | tr '\r' '\n'`.
+Take the id from the `View:` or `Resume with:` line, and the title from the `Created cloud session:` line: when it is not the agent's `title`, rename the session (the dispatch skill's §3a). Record what the session shows as `agent_name` (confirm it with `ListAgents`). The output is a terminal capture, so strip escapes first: `sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' <file> | tr '\r' '\n'`.
 
 `claude -p "..." --cloud <id>` prints lines shaped like:
 
@@ -141,9 +168,9 @@ SESSION_ID=$(grep -oE 'Session ID: *[A-Za-z0-9_]+' <output> | head -1 | awk '{pr
 SESSION_URL=$(grep -oE 'https://claude\.ai/code/[A-Za-z0-9_]+' <output> | head -1)
 ```
 
-When `--output-format json` is accepted, read `session_id` and `url` from the JSON instead. If neither yields an id, set `session_id` to `null`, keep `status: "running"`, and ask the user to paste the session URL from claude.ai/code; update the entry when they do.
+When `--output-format json` is accepted, read `session_id` and `url` from the JSON instead. If neither yields an id, record the agent with `--session-id unknown` and ask the user to paste the session URL from claude.ai/code; update it with `agent --agent a<k> session_id=<id> url=<url>` when they do.
 
-Write the registry immediately after each successful dispatch, before starting the next session.
+Write the registry immediately after each agent starts and each assignment is sent, before the next one.
 
 ## Writing the registry
 
@@ -155,27 +182,32 @@ python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>
 
 | Subcommand | Does |
 |---|---|
-| `show` | Print the registry |
-| `add-session --task --title --path --session-id --url --branch --started-at [--notes] [--worker-id --worker-key]` | Append a session entry with `status: running`; a `--worker-id` without `--worker-key` gets a fresh key |
-| `set --session <session id, worker id, index, last, task list or task> key=value…` | Update `status`, `pr`, `branch`, `autofix`, `verified_sha`, `merge_sha`, `hold_until`, `stacked_on`, `agent_name`, `cloud_title`, `worker_id` or `worker_key` |
+| `show [--agent SEL \| --assignment SEL]` | Print the registry (agents with their queue and assignments), or one entry as JSON |
+| `name --agent a<k> [--replace]` | Print the name, title and worker id for the session about to start (tab-separated: `Ada	Ada (a1)	w:a1`): the slot's name, else the next free one. Writes nothing |
+| `add-agent --agent a<k> [--name <Name>] --path --session-id --url --started-at [--worker-key] [--model --effort] [--queue G …] [--replace]` | Add an agent session with `status: idle`, its name and title, and worker id `w:a<k>`; `--replace` marks the slot's live session `replaced`, moves its queue over, names the new one `w:a<k>.r2` and lists the old session's open assignments |
+| `agent --agent SEL key=value…` | Update `status`, `session_id`, `url`, `path`, `agent_name`, `cloud_title` or `worker_key` |
+| `queue --agent SEL G … \| --clear` | Replace the agent's planned queue (groups such as `"12,13"`, in order) |
+| `move --group G --to SEL` | Rebalance: take a planned group from whichever queue holds it and put it first in SEL's queue; a started group is never moved |
+| `assign --agent SEL --tasks G --title --branch [--assigned-at]` | Give the agent its next assignment: appends it with `status: running`, drops the group from its queue, sets the agent `running`, prints the id (`a<k>-<n>`) |
+| `set --assignment SEL key=value…` | Update `status`, `pr`, `branch`, `title`, `autofix`, `verified_sha`, `merge_sha`, `hold_until` or `stacked_on` |
+| `note (--agent SEL \| --assignment SEL) "text"` | Append to the entry's `notes` |
 | `artifact --url --published-at [--run-key]` | Record the repository's factory board for this run and in `.specs/factory-board.json`; prints the run key |
 | `board` | Print the board URL to reuse (the `CLAUDE.md`/`AGENTS.md` board block, else this registry, else `.specs/factory-board.json`; source on stderr); exit 1 when none. The registry file need not exist yet |
 | `claude-md --url [--target]` | Write or replace the board block in the repository's `CLAUDE.md` (`AGENTS.md` when only that exists; created when neither does), never touching text outside the markers. Committing it is a separate step the user agrees to |
-| `whois --from <id> --key <key>` | Check a board message's sender against the registry: prints `sfm` or the session; exit 1 on a mismatch |
-| `new-key` | Print a fresh worker key (no `--file` needed) |
-| `note --session <session id, worker id, index, last, task list or task> "text"` | Append to the entry's `notes` |
+| `whois --from <id> --key <key>` | Check a board message's sender against the registry: prints `sfm` or the agent and its open assignments; exit 1 on a mismatch or a `replaced` session |
+| `new-key` | Print a fresh key (no `--file` needed) |
 | `stream --token-id --prefix --expires-at [--revoked-at]` | Record the stream token (never the URL) |
 | `stream-seq N` | Record `stream.last_seq` |
 | `policy key=value…` | Set run policy keys |
 | `contract <key> "text"` | Add or replace a `contract_notes` entry |
 | `log --run-log <path> "text"` | Append one line to the run log |
 
-`--session` takes a session id (`session_…`, `cse_…`) or a worker id (`w:…`), matched exactly; an index from `show`; `last`; a group's task list (`"4,5,7"`); or one task number, which finds the entry carrying that task (a group's list or a lane's `tasks`), skipping entries marked `redispatched`. A bare number is read as an index only when no entry carries it. When two live entries carry the same task (a task split across workers, or carried by a convergence group too), the command refuses and lists them instead of guessing: pass the session id. Prefer the session id in every `set` and `note` once the session exists; a guessed match once wrote a `verified_sha` onto the wrong entry. `add-session` warns when a task it records is already carried by a live entry. Every subcommand refuses any value that contains a stream URL.
+Agent `SEL`: the slot (`a1`, meaning its live session), the agent's name (`Ada`, any case), a worker id (`w:a1`, `w:a1.r2`), a session id, an index from `show`, or `last`. Assignment `SEL`: the assignment id (`a1-2`), its pull request (`pr:57` or `#57`; when a replacement continues a failed assignment's pull request, the live one wins), `last` (the newest assignment), or a task list or single task number, which finds the assignment carrying it and skips `reassigned` ones. When two live assignments carry the same task, the command refuses and lists them instead of guessing: pass the assignment id. Prefer the assignment id in every `set` and `note`; a guessed match once wrote a `verified_sha` onto the wrong entry. `assign` and `queue` warn when a task is already carried by another assignment or planned in another queue. Every subcommand refuses any value that contains a stream URL.
 
 ## Using the registry
 
-- Steer: look up the entry whose `task` list holds the task; with a board, write the message into `mail/sfm~<worker_id>` first, then ring the doorbell with the same full text (`board` skill §5: `claude -p … --cloud <session_id>` for a cloud worker, `SendMessage` to `agent_name` only for a local `claude --bg` worker). Record what was sent and how in `notes`.
-- Check: open `url`, or `/tasks` in an interactive session; `claude --teleport <session_id>` to pull the branch locally.
-- Integrate: match pull requests to entries by `branch` or by the task numbers in the title (`task 4, 5, 7:`); set `pr` and `status`.
-- Resume after a manager restart: read the registry first; entries with `status: "running"` are sessions to check before dispatching anything new.
-- Unattended shifts have no local disk that persists between runs; they put the same entries into their report comment on the tracking issue and read the previous comment at the start of the next shift.
+- Send work or steer: look up the agent (`show`), its `session_id` and `path`; with a board, write the message into `mail/sfm~<worker_id>` first, then ring the doorbell with the same full text (`board` skill §5: `claude -p … --cloud <session_id>` for a cloud agent, `SendMessage` to `agent_name` only for a local `claude --bg` agent). Record what was sent and how in `notes`.
+- Check: open `url`, or `/tasks` in an interactive session; `claude --teleport <session_id>` to pull a branch locally.
+- Integrate: match pull requests to assignments by `branch` or by the task numbers in the title (`task 4, 5, 7:`); set `pr` and `status` on the assignment.
+- Resume after a manager restart: read the registry first; agents with `status: "running"` have open assignments to check, and `idle` agents are ready for their next group, before anything new is assigned.
+- Unattended shifts have no local disk that persists between runs; they put the team (slot, name, session id, rung, queue, open assignments) into their report comment on the tracking issue and read the previous comment at the start of the next shift.

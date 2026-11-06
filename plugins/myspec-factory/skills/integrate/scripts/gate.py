@@ -3,7 +3,7 @@
 
 Usage: gate.py <repo-clone-dir> <pr-number> --reviewer <login> [--verified-sha <sha>] [--paths <path> ...]
   --reviewer      the login whose approval gates the merge (the registry's policy.reviewer)
-  --verified-sha  the head your own last verification covered (the registry entry's verified_sha)
+  --verified-sha  the head your own last verification covered (the assignment's verified_sha in the registry)
   --paths         extra paths that count as this pull request's area for item 7, such as the shared
                   packages its projects build against (the projects it touches are found from its diff)
 
@@ -212,7 +212,7 @@ def main():
         # 4. Merge state.
         state, mss = pr["state"], pr.get("mergeStateStatus")
         hints = {"BLOCKED": "a required approval, check or thread is missing", "BEHIND": "update the branch",
-                 "DIRTY": "merge conflicts: ask the worker to rebase", "UNSTABLE": "a non-required check is failing",
+                 "DIRTY": "merge conflicts: ask the agent to rebase", "UNSTABLE": "a non-required check is failing",
                  "UNKNOWN": "GitHub is still computing it: run the gate again", "DRAFT": "the pull request is a draft",
                  "HAS_HOOKS": "merge hooks pending"}
         if state != "OPEN":
@@ -227,7 +227,7 @@ def main():
         # 5. Own verification covers the head.
         v = a.verified_sha
         if not v:
-            say("FAIL", 5, "verified", "no --verified-sha (the registry entry's verified_sha)")
+            say("FAIL", 5, "verified", "no --verified-sha (the assignment's verified_sha in the registry)")
         elif head.startswith(v) or v.startswith(head):
             say("PASS", 5, "verified", f"verified_sha is the head {head[:8]}")
         else:

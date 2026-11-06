@@ -1,7 +1,7 @@
 {
   "name": "myspec-factory",
-  "description": "Turns Claude Code into a Software Factory Manager that runs a MySpec specification bundle to completion: plans dispatch waves from tasks.md, spawns one Claude Code cloud session (or local worktree session) per group of related tasks, integrates the resulting pull requests, marks tasks done on MySpec, and stops at milestone gates. Listens to the MySpec project event feed through a stream token and Claude Code's Monitor tool. Includes the Software Factory Manager output style and a scheduled factory shift.",
-  "version": "1.2.4",
+  "description": "Turns Claude Code into a Software Factory Manager that runs a MySpec specification bundle to completion with a team of long-lived Claude Code agents: groups related tasks from tasks.md, divides them evenly by size between a team of cloud sessions (or local sessions), hands each agent one group at a time and rebalances when one runs dry, integrates the resulting pull requests, marks tasks done on MySpec, and stops at milestone gates. Listens to the MySpec project event feed through a stream token and Claude Code's Monitor tool. Includes the Software Factory Manager output style and a scheduled factory shift.",
+  "version": "2.0.0",
   "author": {
     "name": "MySpec Team",
     "email": "admin@myspec.dev"
