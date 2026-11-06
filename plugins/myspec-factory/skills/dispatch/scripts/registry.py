@@ -2,7 +2,8 @@
 """Read and update a factory team registry (.specs/<bundle>/factory-sessions.json).
 
 Format: skills/dispatch/references/session-registry.md. Python 3 standard library only.
-Writes are atomic (temp file + os.replace), keep unknown keys, and use indent=2.
+Writes are atomic (temp file + os.replace) and serialised by an exclusive lock on <file>.lock, keep
+unknown keys, and use indent=2.
 A value that looks like a stream URL (contains "wss://" or "/realtime/v1/stream/") is refused
 with exit 2: stream token URLs are never stored.
 
@@ -12,8 +13,8 @@ The registry holds the run's team: one `team` entry per agent session, each with
 Usage (--file is required by every subcommand except `log` and `new-key`):
   registry.py show --file F [--agent SEL | --assignment SEL]
   registry.py name --file F --agent a1 [--replace]   print the agent's name, its session title and worker id
-        (tab-separated) for the session about to start: the slot's name when it has one, else the next free
-        name from NAMES. Writes nothing; pass the title to `claude --cloud ... --name` and the name to add-agent
+        (tab-separated) for the session about to start: the slot's name when it has one, else the slot's own
+        entry in NAMES (a1 -> Ada, a2 -> Linus, ...) when free, else the first free one. Writes nothing; pass the title to `claude --cloud ... --name` and the name to add-agent
   registry.py add-agent --file F --agent a1 --path cloud-cli --session-id S --url U --started-at ISO
                         [--name Ada]                        default: the slot's name, else the next free one;
                         a name is unique to one slot for the run; the title is "<name> (<slot or slot.rN>)"
@@ -23,7 +24,7 @@ Usage (--file is required by every subcommand except `log` and `new-key`):
                         setting the user chose
                         [--queue "12,13" "20" ...]          planned task groups, in order
                         [--replace]                         replace the agent's live session: the old entry
-                        becomes `replaced`, its queue moves to the new one, the worker id gets .r2, .r3, ...
+                        becomes `replaced`, its queue moves to the new one (after any --queue groups), the worker id gets .r2, .r3, ...
   registry.py agent --file F --agent SEL key=value ...
         keys: status (running, idle, ended, replaced, retired), session_id, url, path, agent_name,
               cloud_title, worker_key; value null -> null
@@ -69,7 +70,9 @@ it, the command refuses and lists them: pass the assignment id instead.
 Exit codes: 0 ok, 1 not found / bad input, 2 refused (stream URL) or usage error.
 """
 import argparse
+import contextlib
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -207,6 +210,11 @@ def pick_name(data, agent, wanted=None):
         return wanted
     if own:
         return own
+    # The default depends only on the slot (a1 -> Ada, a2 -> Linus, ...), so names picked for agents
+    # started in parallel, before any of them is recorded, never collide.
+    k = int(agent[1:])
+    if k <= len(NAMES) and NAMES[k - 1].lower() not in taken:
+        return NAMES[k - 1]
     for n in NAMES:
         if n.lower() not in taken:
             return n
@@ -402,8 +410,9 @@ def cmd_add_agent(a):
     old = None
     if a.replace:
         old = team[live[0]]
-        if not queue:
-            entry["queue"] = list(old.get("queue") or [])
+        # Merge, never drop: groups given with --queue come first, then the old session's remaining ones.
+        rest = [g for g in (old.get("queue") or []) if g not in entry["queue"]]
+        entry["queue"] = entry["queue"] + rest
         old["queue"] = []
         old["status"] = "replaced"
     team.append(entry)
@@ -886,7 +895,27 @@ def main():
     a = p.parse_args()
     if getattr(a, "file", None) is None and a.global_file:
         a.file = a.global_file
-    a.fn(a)
+    with registry_lock(a):
+        a.fn(a)
+
+
+READ_ONLY = ("show", "board", "whois", "new-key", "name", "log")
+
+
+@contextlib.contextmanager
+def registry_lock(a):
+    """Serialise every command that writes the registry: load -> change -> save runs under an exclusive
+    lock on a sidecar file, so agents recorded in parallel never overwrite each other."""
+    path = getattr(a, "file", None)
+    if a.cmd in READ_ONLY or not path or not os.path.isdir(os.path.dirname(os.path.abspath(path))):
+        yield
+        return
+    with open(os.path.abspath(path) + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 if __name__ == "__main__":

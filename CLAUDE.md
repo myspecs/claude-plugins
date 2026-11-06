@@ -88,6 +88,7 @@ python3 -m json.tool plugins/myspec-mcp/.mcp.json
 claude plugin validate --strict .
 claude plugin validate --strict plugins/myspec-mcp
 claude plugin validate --strict plugins/myspec-factory
+python3 -m unittest discover -s tests/myspec-factory -v   # registry.py, through its command line
 ```
 
 `claude plugin validate` does not inspect `output-styles/`; check those by activating the style in a headless probe (`--settings` does not apply it; use `.claude/settings.local.json` in a scratch repo).

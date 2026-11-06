@@ -174,7 +174,7 @@ Write the registry immediately after each agent starts and each assignment is se
 
 ## Writing the registry
 
-Every write goes through `<plugin root>/skills/dispatch/scripts/registry.py`, never an ad-hoc JSON edit. `registry.py …` elsewhere in the skills stands for:
+Every write goes through `<plugin root>/skills/dispatch/scripts/registry.py`, never an ad-hoc JSON edit. Writes hold an exclusive lock on `factory-sessions.json.lock` next to the file, so commands run in parallel (agents recorded as their starts return) never lose an entry. `registry.py …` elsewhere in the skills stands for:
 
 ```
 python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>/factory-sessions.json <subcommand>
@@ -183,8 +183,8 @@ python3 <plugin root>/skills/dispatch/scripts/registry.py --file .specs/<bundle>
 | Subcommand | Does |
 |---|---|
 | `show [--agent SEL \| --assignment SEL]` | Print the registry (agents with their queue and assignments), or one entry as JSON |
-| `name --agent a<k> [--replace]` | Print the name, title and worker id for the session about to start (tab-separated: `Ada	Ada (a1)	w:a1`): the slot's name, else the next free one. Writes nothing |
-| `add-agent --agent a<k> [--name <Name>] --path --session-id --url --started-at [--worker-key] [--model --effort] [--queue G …] [--replace]` | Add an agent session with `status: idle`, its name and title, and worker id `w:a<k>`; `--replace` marks the slot's live session `replaced`, moves its queue over, names the new one `w:a<k>.r2` and lists the old session's open assignments |
+| `name --agent a<k> [--replace]` | Print the name, title and worker id for the session about to start (tab-separated: `Ada	Ada (a1)	w:a1`): the slot's name, else the slot's own entry in the list (a1 → Ada, a2 → Linus, …) when free, else the first free one. Writes nothing |
+| `add-agent --agent a<k> [--name <Name>] --path --session-id --url --started-at [--worker-key] [--model --effort] [--queue G …] [--replace]` | Add an agent session with `status: idle`, its name and title, and worker id `w:a<k>`; `--replace` marks the slot's live session `replaced`, moves its queue over (after any `--queue` groups, never dropping one), names the new one `w:a<k>.r2` and lists the old session's open assignments |
 | `agent --agent SEL key=value…` | Update `status`, `session_id`, `url`, `path`, `agent_name`, `cloud_title` or `worker_key` |
 | `queue --agent SEL G … \| --clear` | Replace the agent's planned queue (groups such as `"12,13"`, in order) |
 | `move --group G --to SEL` | Rebalance: take a planned group from whichever queue holds it and put it first in SEL's queue; a started group is never moved |
