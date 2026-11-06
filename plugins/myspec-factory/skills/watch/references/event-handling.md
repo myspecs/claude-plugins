@@ -63,12 +63,12 @@ Platform limits worth knowing: 20 live tokens per user, 10 per project, 3 concur
 1. Ignore the event if it is the echo of the manager's own write (`data.content_version` or `data.revision_number` matches what the last `update_spec_file` returned).
 2. Otherwise `get_spec_file` for the new `content_version` and `read_spec_file` for the body.
 3. Diff against the last known body: newly checked tasks (a human or another agent finished something), new tasks (convergence milestone added by an analysis, or a spec edit), reworded acceptance criteria.
-4. Refresh the task board; if a task now marked `[x]` has a worker running, steer that worker to stop and report; if a dispatched task's text changed, steer the worker with the new text or redispatch.
+4. Refresh the task board and the agents' queues; if a task now marked `[x]` is in an open assignment, steer that agent to stop work on it and report; if an assigned task's text changed, steer the agent with the new text; if a queued task changed, its next assignment message carries the new text.
 5. If the manager had a pending write, redo it on the fresh body with the new token.
 
 ### Requirements, solution, constitution, proposal, or a delta changed
 
-Spec changes mid-run are a human review event, not a manager decision. Pause new dispatches for tasks whose `_Requirements:_` cite affected ids (or every task when the constitution changed), run `myspec-mcp:analyze` in spec-consistency mode, and report what changed and which in-flight workers may be building against stale text. Resume only when the user says so.
+Spec changes mid-run are a human review event, not a manager decision. Pause new assignments for tasks whose `_Requirements:_` cite affected ids (or every task when the constitution changed), run `myspec-mcp:analyze` in spec-consistency mode, and report what changed and which agents may be building against stale text. Resume only when the user says so.
 
 ### `spec_file.lock`
 
@@ -76,7 +76,7 @@ Spec changes mid-run are a human review event, not a manager decision. Pause new
 
 ### `attachment.created`
 
-Not in the default scope. Workers never upload their Factory report to MySpec: it is on the pull request (the end of the description, then a comment starting `## Factory report` after each later round), and the pull-request monitor is what tells the manager a worker finished. When a wider scope delivers this frame (for example the manager's own milestone summary, or a user's upload), it is informational; mention it in the next report.
+Not in the default scope. Agents never upload their Factory report to MySpec: it is on the pull request (the end of the description, then a comment starting `## Factory report` after each later round), and the pull-request monitor is what tells the manager a worker finished. When a wider scope delivers this frame (for example the manager's own milestone summary, or a user's upload), it is informational; mention it in the next report.
 
 ### `spec_session.updated`
 
@@ -84,7 +84,7 @@ A completed session means the bundle may have gained or changed documents. Re-li
 
 ### `project.updated` and `project.deleted`
 
-Archived project: stop dispatching, report. Deleted project: the feed ends; stop workers that can be reached and report.
+Archived project: stop sending assignments, report. Deleted project: the feed ends; stop the agents that can be reached and report.
 
 ### Rotation
 

@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Watch one factory pull request: the worker's new branch, the PR, its checks
+# Watch one factory pull request: the agent's new branch for one assignment, the PR, its checks
 # and review state. Prints one line when the state changes, nothing otherwise.
 # Exits when the PR is merged or closed.
 #
 # Usage: pr-watch.sh <repo-clone-dir> "<title prefix>" [--since <ISO-8601 time>] [--interval <seconds>]
 #                    [--reviewer <login>] [--rerequest]
-#   <title prefix>  how the PR title starts, e.g. "task 38", "task 30, 31", "lane 2".
+#   <title prefix>  how the PR title starts, e.g. "task 38", "task 30, 31".
 #                   Letters, digits, spaces and commas only. A PR matches when its title
 #                   starts with the prefix and the next character is not a digit, so
 #                   "task 3" never matches "task 30".
-#   --since         ignore PRs created before this time. Pass the session's `started_at`
+#   --since         ignore PRs created before this time. Pass the assignment's `assigned_at`
 #                   from the registry so an older PR with the same title (another bundle,
-#                   or the PR of a redispatched worker) is never picked up. Also selects the
+#                   or the PR of a replaced agent session) is never picked up. Also selects the
 #                   branches shown before the PR exists: every origin claude/* or factory/* branch
 #                   whose tip commit is at or after this time (read with `git fetch` +
-#                   `git for-each-ref`), so a watch re-armed after the worker pushed still shows
-#                   the worker's branch. Without --since, branches are those that appeared after
+#                   `git for-each-ref`), so a watch re-armed after the agent pushed still shows
+#                   the agent's branch. Without --since, branches are those that appeared after
 #                   the watch started. Once the PR exists, only its head branch is shown (from
 #                   the PR, so a deleted branch still shows), not other sessions' branches.
 #   --reviewer      the reviewer's GitHub login (the registry's `policy.reviewer`).
@@ -81,7 +81,7 @@ list_branches() {
   git ls-remote --heads origin 'claude/*' 'factory/*' 2>/dev/null
 }
 
-# Worker branches whose tip commit is at or after --since, as "name@sha8 ...".
+# Agent branches whose tip commit is at or after --since, as "name@sha8 ...".
 branches_since() {
   git fetch --prune -q origin '+refs/heads/claude/*:refs/remotes/origin/claude/*' \
     '+refs/heads/factory/*:refs/remotes/origin/factory/*' 2>/dev/null || return 1
@@ -91,7 +91,7 @@ branches_since() {
 }
 
 # Without --since: branches that existed when the watch started are not shown as new.
-# Retry the snapshot: an empty baseline would report every existing branch as the worker's.
+# Retry the snapshot: an empty baseline would report every existing branch as the agent's.
 baseline_names=""
 if [ -z "$since" ]; then
   baseline=""

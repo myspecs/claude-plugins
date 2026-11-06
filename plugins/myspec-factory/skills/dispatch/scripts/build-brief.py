@@ -7,7 +7,7 @@ section is copied verbatim from the bundle; nothing is paraphrased. Python 3 std
 Usage:
   build-brief.py --bundle-dir .specs/<bundle> --tasks 45,46,47
                  [--requirements AR-WEB-27,CR-WEB-4] [--clarifications Q24,Q26]
-                 [--greenfield] [--out brief-part.md]
+                 [--greenfield | --no-constitution] [--out brief-part.md]
 
 Sections, in order:
   ## Tasks (in order)            the milestone heading of each task (as ###), then each task
@@ -23,7 +23,9 @@ Sections, in order:
                                  Qn in the task text, under their table header
   ## Constitution (binding)      only when constitution.md and solution.md exist (greenfield) or with
                                  --greenfield: the Technology, Architecture, Testing, Coding Standards
-                                 and Security sections (headings matched case-insensitively, best effort)
+                                 and Security sections (headings matched case-insensitively, best effort);
+                                 never with --no-constitution (an assignment message: the agent brief
+                                 already carries the constitution)
 Ids that are not found are listed in a <!-- missing: ... --> comment and on stderr.
 Exit codes: 0 ok (missing requirement/decision ids are warnings), 1 a task or a bundle file is missing,
 2 usage error.
@@ -191,6 +193,8 @@ def main():
     p.add_argument("--clarifications", help="extra decision ids, e.g. Q24,Q26")
     p.add_argument("--greenfield", action="store_true",
                    help="require the constitution section (default: added when constitution.md and solution.md exist)")
+    p.add_argument("--no-constitution", action="store_true",
+                   help="leave out the constitution (assignment messages; the agent brief already has it)")
     p.add_argument("--out", help="write here instead of stdout")
     a = p.parse_args()
 
@@ -279,7 +283,11 @@ def main():
     greenfield = os.path.exists(const_path) and os.path.exists(os.path.join(bdir, "solution.md"))
     if a.greenfield and not os.path.exists(const_path):
         warn(f"--greenfield: {const_path} not found")
-    if greenfield or (a.greenfield and os.path.exists(const_path)):
+    if a.greenfield and a.no_constitution:
+        die_usage = "--greenfield and --no-constitution exclude each other"
+        print(f"build-brief: {die_usage}", file=sys.stderr)
+        sys.exit(2)
+    if not a.no_constitution and (greenfield or (a.greenfield and os.path.exists(const_path))):
         out += ["## Constitution (binding)", ""]
         for sec in constitution_sections(const_path):
             # Demote so each section sits under "## Constitution (binding)".

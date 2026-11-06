@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wake the manager at a fixed interval so it reads the factory board's mailbox.
-# Workers write to the board with ArtifactData, which wakes no session, and a bash
+# Agents write to the board with ArtifactData, which wakes no session, and a bash
 # Monitor cannot call ArtifactData itself; each line printed here is the manager's
 # cue to read the board (the board skill).
 #
@@ -12,7 +12,7 @@
 # Lines:
 #   <time> board-tick <n>/<ticks>   -- read the board mailbox now
 #   <time> board-tick-done          -- the last tick was printed; exit 0
-# Run it only while a worker is working; stop it (TaskStop) as soon as none is. Works with macOS bash 3.2.
+# Run it only while an agent is working; stop it (TaskStop) as soon as none is. Works with macOS bash 3.2.
 set -uo pipefail
 
 minutes=${1:-10}

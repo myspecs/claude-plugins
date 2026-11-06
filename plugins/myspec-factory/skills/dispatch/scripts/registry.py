@@ -1,22 +1,43 @@
 #!/usr/bin/env python3
-"""Read and update a factory session registry (.specs/<bundle>/factory-sessions.json).
+"""Read and update a factory team registry (.specs/<bundle>/factory-sessions.json).
 
 Format: skills/dispatch/references/session-registry.md. Python 3 standard library only.
-Writes are atomic (temp file + os.replace), keep unknown keys, and use indent=2.
+Writes are atomic (temp file + os.replace) and serialised by an exclusive lock on <file>.lock, keep
+unknown keys, and use indent=2.
 A value that looks like a stream URL (contains "wss://" or "/realtime/v1/stream/") is refused
 with exit 2: stream token URLs are never stored.
 
+The registry holds the run's team: one `team` entry per agent session, each with its planned
+`queue` of task groups and the `assignments` (one per pull request) it has been given.
+
 Usage (--file is required by every subcommand except `log` and `new-key`):
-  registry.py show --file F [--session SEL | --last]
-  registry.py add-session --file F --task "45,46,47" --title T --path cloud-cli --session-id S
-                          --url U --branch B --started-at ISO [--notes N]
-                          [--worker-id w:tasks-45-46-47 [--worker-key K]]   key generated when omitted
-                          [--model opus --effort medium [--off-ladder]]     rungs: sonnet/medium, opus/medium,
-                          opus/high, opus/xhigh (references/model-and-effort.md); --off-ladder records a
-                          setting the user chose
-  registry.py set --file F --session SEL key=value ...
-        keys: status, pr (int), branch, autofix, verified_sha, merge_sha, hold_until, stacked_on,
-              agent_name, cloud_title, worker_id, worker_key; value null -> null
+  registry.py show --file F [--agent SEL | --assignment SEL]
+  registry.py name --file F --agent a1 [--replace]   print the agent's name, its session title and worker id
+        (tab-separated) for the session about to start: the slot's name when it has one, else the slot's own
+        entry in NAMES (a1 -> Ada, a2 -> Linus, ...) when free, else the first free one. Writes nothing; pass the title to `claude --cloud ... --name` and the name to add-agent
+  registry.py add-agent --file F --agent a1 --path cloud-cli --session-id S --url U --started-at ISO
+                        [--name Ada]                        default: the slot's name, else the next free one;
+                        a name is unique to one slot for the run; the title is "<name> (<slot or slot.rN>)"
+                        [--worker-key K]                    key generated when omitted; worker id is w:<agent>
+                        [--model opus --effort medium [--off-ladder]]   rungs: sonnet/medium, opus/medium,
+                        opus/high, opus/xhigh (references/model-and-effort.md); --off-ladder records a
+                        setting the user chose
+                        [--queue "12,13" "20" ...]          planned task groups, in order
+                        [--replace]                         replace the agent's live session: the old entry
+                        becomes `replaced`, its queue moves to the new one (after any --queue groups), the worker id gets .r2, .r3, ...
+  registry.py agent --file F --agent SEL key=value ...
+        keys: status (running, idle, ended, replaced, retired), session_id, url, path, agent_name,
+              cloud_title, worker_key; value null -> null
+  registry.py queue --file F --agent SEL [GROUP ...] [--clear]   replace the agent's planned queue
+  registry.py move --file F --group "20,21" --to SEL     rebalance: take a planned (not started) group from
+        whichever queue holds it and put it first in SEL's queue
+  registry.py assign --file F --agent SEL --tasks "12,13" --title T --branch B [--assigned-at ISO]
+        give the agent its next assignment (one pull request): appends it with status running, removes
+        the group from the agent's queue, sets the agent running, prints the assignment id (a1-2)
+  registry.py set --file F --assignment SEL key=value ...
+        keys: status, pr (int), branch, title, autofix, verified_sha, merge_sha, hold_until, stacked_on;
+              value null -> null
+  registry.py note --file F (--agent SEL | --assignment SEL) "text"   appends "; [HH:MMZ] text" to notes
   registry.py artifact --file F --url https://claude.ai/... --published-at ISO [--run-key K]
         records the repository's factory board for this run (run key generated when omitted, kept
         when already set; never a stream URL) and in .specs/factory-board.json, a local fallback
@@ -30,10 +51,9 @@ Usage (--file is required by every subcommand except `log` and `new-key`):
         the markers is never touched. Committing the file is a separate, agreed step.
         F need not exist yet: its path only locates the repository root
   registry.py whois --file F --from ID --key K           who wrote a board message: prints "sfm" or the
-        session; exit 1 when the id and key do not match the registry or the session was redispatched
+        agent; exit 1 when the id and key do not match the registry or the agent session was replaced
   registry.py new-key                                    print a fresh worker key (for the brief, before
-        add-session records it)
-  registry.py note --file F --session SEL "text"         appends "; [HH:MMZ] text" to notes
+        add-agent records it)
   registry.py stream --file F --token-id X --prefix P --expires-at ISO [--event-types a,b] [--revoked-at ISO]
         replaces `stream` (last_seq null); the old one moves to `stream_history` (revoked_at set when given)
   registry.py stream-seq --file F N                      sets stream.last_seq only when N is greater
@@ -41,26 +61,36 @@ Usage (--file is required by every subcommand except `log` and `new-key`):
   registry.py contract --file F key "text"               sets contract_notes[key]
   registry.py log --run-log .specs/<bundle>/factory-run.md "text"   appends "- <ISO now> text"
 
-SEL is a session id (session_..., cse_...), a worker id (w:...), a session index as shown by `show`
-(0-based), `last`, or a task string ("52", "45,46,47"). Session and worker ids match exactly. A single
-task number also matches the group or lane entry that carries it ("46" finds "45,46,47"), and is read as
-an index only when no entry carries it. Entries marked `redispatched` are skipped when another entry
-carries the task; when two live entries carry it, the command refuses and lists them: pass the session
-id, the worker id or the index instead.
+Agent SEL: a slot (a1: its live session), the agent's name (Ada, any case), a worker id (w:a1, w:a1.r2), a session id (session_...,
+cse_...), an index as shown by `show` (0-based), or `last`.
+Assignment SEL: an assignment id (a1-2), a pull request (pr:57 or #57), `last` (the newest assignment made),
+or a task string ("52", "45,46,47"); a single task number also matches the assignment that carries it.
+Assignments marked `reassigned` are skipped when another carries the task; when two live assignments carry
+it, the command refuses and lists them: pass the assignment id instead.
 Exit codes: 0 ok, 1 not found / bad input, 2 refused (stream URL) or usage error.
 """
 import argparse
+import contextlib
 import datetime
+import fcntl
 import json
 import os
+import re
 import secrets
 import sys
 import tempfile
 
-STATUSES = ("running", "pushed", "pr-open", "blocked", "merged", "failed", "redispatched")
-SET_KEYS = ("status", "pr", "branch", "autofix", "verified_sha", "merge_sha", "hold_until", "stacked_on",
-            "agent_name", "cloud_title", "worker_id", "worker_key")
+AGENT_STATUSES = ("running", "idle", "ended", "replaced", "retired")
+ASSIGNMENT_STATUSES = ("running", "pushed", "pr-open", "blocked", "merged", "failed", "reassigned")
+AGENT_KEYS = ("status", "session_id", "url", "path", "agent_name", "cloud_title", "worker_key")
+# Person-style agent names (computing pioneers), handed out in order; a slot keeps its name for the run.
+NAMES = ("Ada", "Linus", "Grace", "Alan", "Barbara", "Dennis", "Margaret", "Ken", "Radia", "Edsger",
+         "Frances", "Donald", "Katherine", "John", "Hedy", "Tim", "Annie", "Guido", "Jean", "Bjarne")
+NAME_RE = re.compile(r"^[A-Z][A-Za-z]{1,19}$")
+SET_KEYS = ("status", "pr", "branch", "title", "autofix", "verified_sha", "merge_sha", "hold_until",
+            "stacked_on")
 LADDER = (("sonnet", "medium"), ("opus", "medium"), ("opus", "high"), ("opus", "xhigh"))
+AGENT_RE = re.compile(r"^a[1-9][0-9]*$")
 
 
 def die(msg, code=1):
@@ -88,7 +118,7 @@ def load(path):
     if not path:
         die("--file is required (.specs/<bundle>/factory-sessions.json)", 2)
     if not os.path.exists(path):
-        die(f"{path} does not exist; create it with {{\"project_id\": ..., \"bundle\": ..., \"sessions\": []}}")
+        die(f"{path} does not exist; create it with {{\"project_id\": ..., \"bundle\": ..., \"team\": []}}")
     try:
         with open(path) as f:
             data = json.load(f)
@@ -96,7 +126,11 @@ def load(path):
         die(f"cannot read {path}: {e}")
     if not isinstance(data, dict):
         die(f"{path} is not a JSON object")
-    data.setdefault("sessions", [])
+    if data.get("sessions"):
+        print("registry: note: this registry has 1.x `sessions` entries (one worker per group); they are kept "
+              "but not read. Finish or close those pull requests by hand; the team lives under `team`",
+              file=sys.stderr)
+    data.setdefault("team", [])
     return data
 
 
@@ -143,54 +177,148 @@ def pairs(items):
     return out
 
 
-def holds_task(s, sel):
-    """True when the entry's task string equals sel, or sel is one task number the entry carries
-    (a group's "4,5,7" list or a lane's `tasks`)."""
-    want = sel.replace(" ", "")
-    stored = str(s.get("task")).replace(" ", "")
-    if stored == want:
-        return True
-    if not want.isdigit():
-        return False
-    return want in stored.split(",") or want in [str(t) for t in (s.get("tasks") or [])]
+def norm_group(g):
+    """'12, 13' -> '12,13'; a bare number stays a string."""
+    parts = [p.strip() for p in str(g).split(",") if p.strip()]
+    if not parts or not all(p.replace(".", "").isdigit() for p in parts):
+        die(f"not a task list: {g!r} (expected numbers such as 12 or 12,13)", 2)
+    return ",".join(parts)
 
 
-def describe(i, s):
-    return f"[{i}] task={s.get('task')} status={s.get('status')} session_id={s.get('session_id') or '-'}"
+def team_of(data):
+    return data["team"]
 
 
-def find_session(data, sel):
-    sessions = data["sessions"]
-    if not sessions:
-        die("no sessions in the registry")
+def slot_name(data, agent):
+    for e in team_of(data):
+        if e.get("agent") == agent and e.get("name"):
+            return e["name"]
+    return None
+
+
+def pick_name(data, agent, wanted=None):
+    taken = {e.get("name", "").lower(): e.get("agent") for e in team_of(data) if e.get("name")}
+    own = slot_name(data, agent)
+    if wanted:
+        if not NAME_RE.match(wanted):
+            die(f"--name must be one capitalised word of letters (for example Ada), got {wanted!r}", 2)
+        holder = taken.get(wanted.lower())
+        if holder and holder != agent:
+            die(f"name {wanted} is already agent {holder}'s; agent names are unique for the run", 2)
+        if own and own != wanted:
+            die(f"agent {agent} is named {own}; a replacement session keeps the slot's name", 2)
+        return wanted
+    if own:
+        return own
+    # The default depends only on the slot (a1 -> Ada, a2 -> Linus, ...), so names picked for agents
+    # started in parallel, before any of them is recorded, never collide.
+    k = int(agent[1:])
+    if k <= len(NAMES) and NAMES[k - 1].lower() not in taken:
+        return NAMES[k - 1]
+    for n in NAMES:
+        if n.lower() not in taken:
+            return n
+    i = 2
+    while f"{NAMES[0]}{i}".lower() in taken:
+        i += 1
+    return f"{NAMES[0]}{i}"
+
+
+def worker_suffix(data, agent):
+    n = sum(1 for e in team_of(data) if e.get("agent") == agent)
+    return agent if n == 0 else f"{agent}.r{n + 1}"
+
+
+def describe_agent(i, e):
+    return (f"[{i}] agent={e.get('agent')} name={e.get('name') or '-'} worker_id={e.get('worker_id')} status={e.get('status')} "
+            f"session_id={e.get('session_id') or '-'}")
+
+
+def find_agent(data, sel):
+    team = team_of(data)
+    if not team:
+        die("no agents in the registry")
     if sel == "last":
-        return len(sessions) - 1
-    # Session and worker ids are unique handles: match them exactly, never as task numbers.
+        return len(team) - 1
     if sel.startswith(("session_", "cse_", "w:")):
         key = "worker_id" if sel.startswith("w:") else "session_id"
-        hits = [i for i, s in enumerate(sessions) if s.get(key) == sel]
+        hits = [i for i, e in enumerate(team) if e.get(key) == sel]
         if len(hits) == 1:
             return hits[0]
         if not hits:
-            die(f"no session has {key} {sel!r}")
-        die(f"{len(hits)} entries have {key} {sel!r}: " + "; ".join(describe(i, sessions[i]) for i in hits)
+            die(f"no agent has {key} {sel!r}")
+        die(f"{len(hits)} agents have {key} {sel!r}: " + "; ".join(describe_agent(i, team[i]) for i in hits)
             + ". Pass the index instead")
-    if sel.isdigit() and int(sel) < len(sessions) and not any(holds_task(s, sel) for s in sessions):
+    if AGENT_RE.match(sel):
+        hits = [i for i, e in enumerate(team) if e.get("agent") == sel]
+        if not hits:
+            die(f"no agent {sel!r}")
+        live = [i for i in hits if team[i].get("status") != "replaced"]
+        if len(live) > 1:
+            die(f"agent {sel!r} has {len(live)} live sessions: " + "; ".join(describe_agent(i, team[i]) for i in live)
+                + ". Pass the worker id instead")
+        return live[0] if live else hits[-1]
+    if sel.isdigit() and int(sel) < len(team):
         return int(sel)
-    matches = [i for i, s in enumerate(sessions) if holds_task(s, sel)]
-    if matches:
-        live = [i for i in matches if sessions[i].get("status") != "redispatched"]
-        if len(live) == 1:
-            return live[0]
-        if not live:
-            return matches[-1]
-        # Guessing here once wrote a verified_sha onto the wrong entry: refuse instead.
-        die(f"{sel!r} matches {len(live)} entries: " + "; ".join(describe(i, sessions[i]) for i in live)
-            + ". Pass the session id, the worker id or the index instead")
-    if sel.isdigit() and int(sel) < len(sessions):
-        return int(sel)
-    die(f"no session matches {sel!r} (use a session id, a worker id, an index from `show`, `last`, "
-        "or a task string)")
+    named = [e.get("agent") for e in team if (e.get("name") or "").lower() == sel.lower()]
+    if named:
+        return find_agent(data, named[0])
+    die(f"no agent matches {sel!r} (use a1, the agent's name, a worker id, a session id, an index from `show`, or `last`)")
+
+
+def all_assignments(data):
+    for i, e in enumerate(team_of(data)):
+        for j, s in enumerate(e.get("assignments") or []):
+            yield i, j, s
+
+
+def carries(s, want):
+    stored = norm_group(s.get("tasks"))
+    if stored == want:
+        return True
+    return "," not in want and want in stored.split(",")
+
+
+def describe_assignment(i, j, s):
+    return f"{s.get('id')} tasks={s.get('tasks')} status={s.get('status')} pr={s.get('pr') or '-'}"
+
+
+def find_assignment(data, sel):
+    rows = list(all_assignments(data))
+    if not rows:
+        die("no assignments in the registry")
+    if sel == "last":
+        return max(rows, key=lambda r: (r[2].get("seq") or 0, r[2].get("assigned_at") or ""))[:2]
+    if re.match(r"^a[1-9][0-9]*-[0-9]+$", sel):
+        hits = [r for r in rows if r[2].get("id") == sel]
+        if not hits:
+            die(f"no assignment {sel!r}")
+        return hits[0][:2]
+    m = re.match(r"^(?:pr:|#)([0-9]+)$", sel)
+    if m:
+        n = int(m.group(1))
+        hits = [r for r in rows if r[2].get("pr") == n]
+        if len(hits) > 1:
+            # A replacement session continues the failed session's pull request: prefer the live entry.
+            live = [r for r in hits if r[2].get("status") not in ("reassigned", "failed")]
+            hits = live or hits
+        if len(hits) == 1:
+            return hits[0][:2]
+        if not hits:
+            die(f"no assignment has pr {n}")
+        die(f"{len(hits)} assignments have pr {n}: " + "; ".join(describe_assignment(*h) for h in hits))
+    want = norm_group(sel)
+    hits = [r for r in rows if carries(r[2], want)]
+    if not hits:
+        die(f"no assignment matches {sel!r} (use an assignment id such as a1-2, pr:N, `last`, or a task string)")
+    live = [r for r in hits if r[2].get("status") != "reassigned"]
+    if len(live) == 1:
+        return live[0][:2]
+    if not live:
+        return hits[-1][:2]
+    # Guessing here once wrote a verified_sha onto the wrong entry: refuse instead.
+    die(f"{sel!r} matches {len(live)} assignments: " + "; ".join(describe_assignment(*r) for r in live)
+        + ". Pass the assignment id instead")
 
 
 def new_key():
@@ -204,10 +332,15 @@ def short(v, n):
 
 def cmd_show(a):
     data = load(a.file)
-    if a.last or a.session is not None:
-        i = find_session(data, "last" if a.last else a.session)
-        print(f"session [{i}]")
-        print(json.dumps(data["sessions"][i], indent=2, ensure_ascii=False))
+    if a.agent is not None:
+        i = find_agent(data, a.agent)
+        print(f"agent [{i}]")
+        print(json.dumps(team_of(data)[i], indent=2, ensure_ascii=False))
+        return
+    if a.assignment is not None:
+        i, j = find_assignment(data, a.assignment)
+        print(f"assignment of agent [{i}] {team_of(data)[i].get('worker_id')}")
+        print(json.dumps(team_of(data)[i]["assignments"][j], indent=2, ensure_ascii=False))
         return
     print(f"bundle={data.get('bundle', '-')} project_id={data.get('project_id', '-')}")
     for k, v in (data.get("policy") or {}).items():
@@ -226,60 +359,186 @@ def cmd_show(a):
               f"last_seq={st.get('last_seq')} revoked_at={st.get('revoked_at')} event_types={len(st.get('event_types') or [])}")
     print(f"stream_history={len(data.get('stream_history') or [])} contract_notes={len(data.get('contract_notes') or {})}"
           f" files={len(data.get('files') or {})}")
-    print(f"{'#':>3}  {'task':<12} {'status':<12} {'pr':<8} {'verified':<10} {'worker_id':<20} session_id")
-    for i, s in enumerate(data["sessions"]):
-        pr = s.get("pr")
-        if isinstance(pr, str) and "/pull/" in pr:
-            pr = "#" + pr.rsplit("/", 1)[-1]
-        elif isinstance(pr, int):
-            pr = f"#{pr}"
-        print(f"{i:>3}  {short(s.get('task'), 12):<12} {short(s.get('status'), 12):<12} {short(pr, 8):<8} "
-              f"{short((s.get('verified_sha') or '-')[:8], 10):<10} {short(s.get('worker_id'), 20):<20} "
-              f"{s.get('session_id') or '-'}")
+    for i, e in enumerate(team_of(data)):
+        rung = f"{e.get('model') or '-'}/{e.get('effort') or '-'}"
+        queue = " | ".join(e.get("queue") or []) or "-"
+        print(f"[{i}] {e.get('worker_id')} {e.get('title') or e.get('name') or '-'} status={e.get('status')} rung={rung} "
+              f"session_id={e.get('session_id') or '-'}")
+        print(f"     queue: {queue}")
+        for s in e.get("assignments") or []:
+            pr = s.get("pr")
+            pr = f"#{pr}" if isinstance(pr, int) else short(pr, 8)
+            print(f"     {short(s.get('id'), 7):<7} {short(s.get('tasks'), 14):<14} {short(s.get('status'), 11):<11} "
+                  f"{pr:<7} verified={short((s.get('verified_sha') or '-')[:8], 8)}")
 
 
-def cmd_add_session(a):
-    data = load(a.file)
-    task = int(a.task) if a.task.isdigit() else a.task
-    entry = {
-        "task": task, "title": a.title, "path": a.path, "session_id": a.session_id,
-        "agent_name": None, "url": a.url, "branch": a.branch, "started_at": a.started_at,
-        "status": "running", "pr": None, "autofix": "unknown", "verified_sha": None,
-        "notes": a.notes or "",
-    }
-    if a.worker_key and not a.worker_id:
-        die("--worker-key needs --worker-id", 2)
-    if a.worker_id:
-        if not a.worker_id.startswith("w:"):
-            die("--worker-id must start with 'w:' (for example w:tasks-45-46-47)", 2)
-        if any(s.get("worker_id") == a.worker_id for s in data["sessions"]):
-            die(f"worker id {a.worker_id} is already used; add a redispatch suffix such as .r2", 2)
-        entry["worker_id"] = a.worker_id
-        entry["worker_key"] = a.worker_key or new_key()
+def check_rung(a):
     if (a.model is None) != (a.effort is None):
         die("--model and --effort go together", 2)
+    if a.model is not None and (a.model, a.effort) not in LADDER and not a.off_ladder:
+        rungs = ", ".join(f"{m}/{e}" for m, e in LADDER)
+        die(f"{a.model}/{a.effort} is not on the ladder ({rungs}); pass --off-ladder when the user chose it", 2)
+
+
+def cmd_add_agent(a):
+    data = load(a.file)
+    if not AGENT_RE.match(a.agent):
+        die("--agent must be a1, a2, ... (the team slot)", 2)
+    check_rung(a)
+    team = team_of(data)
+    same = [i for i, e in enumerate(team) if e.get("agent") == a.agent]
+    live = [i for i in same if team[i].get("status") != "replaced"]
+    queue = [norm_group(g) for g in (a.queue or [])]
+    if live and not a.replace:
+        die(f"agent {a.agent} already has a live session ({describe_agent(live[0], team[live[0]])}); "
+            "pass --replace to replace it, or pick the next agent name", 2)
+    if a.replace and not live:
+        die(f"agent {a.agent} has no live session to replace", 2)
+    name = pick_name(data, a.agent, a.name)
+    suffix = worker_suffix(data, a.agent)
+    worker_id = f"w:{suffix}"
+    entry = {
+        "agent": a.agent, "name": name, "title": f"{name} ({suffix})",
+        "worker_id": worker_id, "worker_key": a.worker_key or new_key(),
+        "session_id": a.session_id, "url": a.url, "path": a.path, "agent_name": None,
+        "started_at": a.started_at, "status": "idle", "queue": queue, "assignments": [], "notes": a.notes or "",
+    }
     if a.model is not None:
-        if (a.model, a.effort) not in LADDER and not a.off_ladder:
-            rungs = ", ".join(f"{m}/{e}" for m, e in LADDER)
-            die(f"{a.model}/{a.effort} is not on the ladder ({rungs}); pass --off-ladder when the user chose it", 2)
         entry["model"] = a.model
         entry["effort"] = a.effort
     guard(entry)
-    for want in str(task).replace(" ", "").split(","):
-        for i, s in enumerate(data["sessions"]):
-            if s.get("status") != "redispatched" and holds_task(s, want):
-                print(f"registry: note: task {want} is also carried by {describe(i, s)}; select entries by "
-                      "session id or worker id from now on", file=sys.stderr)
-    data["sessions"].append(entry)
+    old = None
+    if a.replace:
+        old = team[live[0]]
+        # Merge, never drop: groups given with --queue come first, then the old session's remaining ones.
+        rest = [g for g in (old.get("queue") or []) if g not in entry["queue"]]
+        entry["queue"] = entry["queue"] + rest
+        old["queue"] = []
+        old["status"] = "replaced"
+    team.append(entry)
     save(a.file, data)
-    extra = f" worker_id={entry['worker_id']} worker_key={entry['worker_key']}" if a.worker_id else ""
-    print(f"added session [{len(data['sessions']) - 1}] task={task} status=running{extra}")
+    if old:
+        open_ = [x for x in old.get("assignments") or [] if x.get("status") in ("running", "pushed", "pr-open", "blocked")]
+        for x in open_:
+            print(f"registry: note: {x.get('id')} (tasks {x.get('tasks')}, status {x.get('status')}) is still open on "
+                  f"{old['worker_id']}: set it failed or reassigned, then assign what is left to {worker_id} "
+                  "(it may continue the same branch and pull request)", file=sys.stderr)
+    extra = f" (replaces {old['worker_id']}; queue moved)" if old else ""
+    print(f"added agent [{len(team) - 1}] {worker_id} \"{entry['title']}\" worker_key={entry['worker_key']} "
+          f"queue={' | '.join(entry['queue']) or '-'}{extra}")
+
+
+def cmd_name(a):
+    data = load(a.file)
+    if not AGENT_RE.match(a.agent):
+        die("--agent must be a1, a2, ... (the team slot)", 2)
+    team = team_of(data)
+    live = [e for e in team if e.get("agent") == a.agent and e.get("status") != "replaced"]
+    if live and not a.replace:
+        die(f"agent {a.agent} already has a live session; pass --replace for its replacement's title", 2)
+    if a.replace and not live:
+        die(f"agent {a.agent} has no live session to replace", 2)
+    name = pick_name(data, a.agent)
+    suffix = worker_suffix(data, a.agent)
+    print(f"{name}\t{name} ({suffix})\tw:{suffix}")
+
+
+def cmd_agent(a):
+    data = load(a.file)
+    i = find_agent(data, a.agent)
+    e = team_of(data)[i]
+    for k, v in pairs(a.pairs):
+        if k not in AGENT_KEYS:
+            die(f"cannot set {k!r} on an agent; allowed: {', '.join(AGENT_KEYS)} (queue: use `queue`)", 2)
+        guard(v)
+        val = None if v == "null" else v
+        if k == "status" and val is not None and val not in AGENT_STATUSES:
+            die(f"agent status must be one of {', '.join(AGENT_STATUSES)}")
+        e[k] = val
+        print(f"[{i}] {e.get('worker_id')} {k}={val}")
+    save(a.file, data)
+
+
+def cmd_queue(a):
+    data = load(a.file)
+    i = find_agent(data, a.agent)
+    e = team_of(data)[i]
+    if a.clear and a.groups:
+        die("pass groups or --clear, not both", 2)
+    groups = [] if a.clear else [norm_group(g) for g in a.groups]
+    if not a.clear and not groups:
+        die("give the planned groups in order (\"12,13\" \"20\"), or --clear", 2)
+    e["queue"] = groups
+    warn_carried(data, groups, skip=None, planned=(i,))
+    save(a.file, data)
+    print(f"[{i}] {e.get('worker_id')} queue={' | '.join(groups) or '-'}")
+
+
+def cmd_move(a):
+    data = load(a.file)
+    group = norm_group(a.group)
+    to = find_agent(data, a.to)
+    team = team_of(data)
+    src = [i for i, e in enumerate(team) if group in (e.get("queue") or [])]
+    if not src:
+        die(f"group {group} is in no agent's queue (a started group is never moved; reassign it after a failure)")
+    if len(src) > 1:
+        die(f"group {group} is in {len(src)} queues: " + "; ".join(describe_agent(i, team[i]) for i in src))
+    if src[0] == to:
+        die(f"group {group} is already in {team[to].get('worker_id')}'s queue")
+    if team[to].get("status") in ("replaced", "retired", "ended"):
+        die(f"{team[to].get('worker_id')} is {team[to].get('status')}; pick a live agent")
+    team[src[0]]["queue"].remove(group)
+    team[to].setdefault("queue", []).insert(0, group)
+    save(a.file, data)
+    print(f"moved {group} from {team[src[0]].get('worker_id')} to {team[to].get('worker_id')} (first in its queue)")
+
+
+def warn_carried(data, groups, skip, planned=()):
+    for g in groups:
+        for t in g.split(","):
+            for i, j, s in all_assignments(data):
+                if (i, j) != skip and s.get("status") not in ("reassigned", "failed") and carries(s, t):
+                    print(f"registry: note: task {t} is also carried by assignment {describe_assignment(i, j, s)}",
+                          file=sys.stderr)
+            for i, e in enumerate(team_of(data)):
+                if i in planned or e.get("status") == "replaced":
+                    continue
+                for q in e.get("queue") or []:
+                    if t in q.split(","):
+                        print(f"registry: note: task {t} is also planned in {e.get('worker_id')}'s queue ({q})",
+                              file=sys.stderr)
+
+
+def cmd_assign(a):
+    data = load(a.file)
+    i = find_agent(data, a.agent)
+    e = team_of(data)[i]
+    if e.get("status") in ("replaced", "retired", "ended"):
+        die(f"{e.get('worker_id')} is {e.get('status')}; assign to a live agent session", 2)
+    group = norm_group(a.tasks)
+    n = 1 + sum(len(x.get("assignments") or []) for x in team_of(data) if x.get("agent") == e.get("agent"))
+    seq = 1 + max([x.get("seq") or 0 for _, _, x in all_assignments(data)] or [0])
+    asg = {
+        "id": f"{e.get('agent')}-{n}", "seq": seq, "tasks": group, "title": a.title, "branch": a.branch,
+        "assigned_at": a.assigned_at or now_iso(), "status": "running", "pr": None, "autofix": "unknown",
+        "verified_sha": None, "merge_sha": None, "hold_until": None, "stacked_on": None, "notes": a.notes or "",
+    }
+    guard(asg)
+    queue = e.setdefault("queue", [])
+    if group in queue:
+        queue.remove(group)
+    e.setdefault("assignments", []).append(asg)
+    warn_carried(data, [group], skip=(i, len(e["assignments"]) - 1), planned=(i,))
+    e["status"] = "running"
+    save(a.file, data)
+    print(f"assigned {asg['id']} tasks={group} to {e.get('worker_id')} (queue left: {' | '.join(queue) or '-'})")
 
 
 def cmd_set(a):
     data = load(a.file)
-    i = find_session(data, a.session)
-    s = data["sessions"][i]
+    i, j = find_assignment(data, a.assignment)
+    s = team_of(data)[i]["assignments"][j]
     for k, v in pairs(a.pairs):
         if k not in SET_KEYS:
             die(f"cannot set {k!r}; allowed: {', '.join(SET_KEYS)}", 2)
@@ -292,25 +551,30 @@ def cmd_set(a):
             val = int(v.lstrip("#"))
         else:
             val = v
-        if k == "status" and val is not None and val not in STATUSES:
-            die(f"status must be one of {', '.join(STATUSES)}")
-        if k == "worker_id" and val is not None and not str(val).startswith("w:"):
-            die("worker_id must start with 'w:' (for example w:tasks-45-46-47)", 2)
+        if k == "status" and val is not None and val not in ASSIGNMENT_STATUSES:
+            die(f"assignment status must be one of {', '.join(ASSIGNMENT_STATUSES)}")
         s[k] = val
-        print(f"[{i}] {k}={val}")
+        print(f"{s.get('id')} {k}={val}")
     save(a.file, data)
 
 
 def cmd_note(a):
     data = load(a.file)
     guard(a.text)
-    i = find_session(data, a.session)
-    s = data["sessions"][i]
+    if (a.agent is None) == (a.assignment is None):
+        die("pass exactly one of --agent and --assignment", 2)
+    if a.agent is not None:
+        i = find_agent(data, a.agent)
+        target, label = team_of(data)[i], team_of(data)[i].get("worker_id")
+    else:
+        i, j = find_assignment(data, a.assignment)
+        target = team_of(data)[i]["assignments"][j]
+        label = target.get("id")
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("[%H:%MZ]")
-    old = s.get("notes") or ""
-    s["notes"] = f"{old}; {stamp} {a.text}" if old else f"{stamp} {a.text}"
+    old = target.get("notes") or ""
+    target["notes"] = f"{old}; {stamp} {a.text}" if old else f"{stamp} {a.text}"
     save(a.file, data)
-    print(f"[{i}] note added")
+    print(f"{label} note added")
 
 
 def cmd_stream(a):
@@ -486,15 +750,17 @@ def cmd_whois(a):
             print("sfm")
             return
         die(f"from=sfm but the key does not match artifact.run_key")
-    for i, s in enumerate(data["sessions"]):
-        if s.get("worker_id") == a.sender:
-            if s.get("worker_key") != a.key:
-                die(f"from={a.sender} but the key does not match session [{i}]")
-            if s.get("status") == "redispatched":
-                die(f"from={a.sender}: session [{i}] was replaced by a redispatch; its messages are invalid")
-            print(f"session [{i}] task={s.get('task')} status={s.get('status')}")
+    for i, e in enumerate(team_of(data)):
+        if e.get("worker_id") == a.sender:
+            if e.get("worker_key") != a.key:
+                die(f"from={a.sender} but the key does not match agent [{i}]")
+            if e.get("status") == "replaced":
+                die(f"from={a.sender}: agent [{i}] was replaced by a new session; its messages are invalid")
+            cur = [s for s in e.get("assignments") or [] if s.get("status") not in ("merged", "reassigned")]
+            now = ",".join(s.get("id") for s in cur) or "none"
+            print(f"agent [{i}] {a.sender} ({e.get('name') or '-'}) status={e.get('status')} open assignments={now}")
             return
-    die(f"no session has worker_id {a.sender!r}")
+    die(f"no agent has worker_id {a.sender!r}")
 
 
 def cmd_new_key(a):
@@ -511,7 +777,7 @@ def cmd_log(a):
 def main():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--file", help=".specs/<bundle>/factory-sessions.json (required)")
-    p = argparse.ArgumentParser(description="Factory session registry tool.",
+    p = argparse.ArgumentParser(description="Factory team registry tool.",
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     # --file is accepted before or after the subcommand.
     p.add_argument("--file", dest="global_file", help=argparse.SUPPRESS)
@@ -519,28 +785,62 @@ def main():
 
     s = sub.add_parser("show", parents=[common])
     g = s.add_mutually_exclusive_group()
-    g.add_argument("--session")
-    g.add_argument("--last", action="store_true")
+    g.add_argument("--agent")
+    g.add_argument("--assignment")
     s.set_defaults(fn=cmd_show)
 
-    s = sub.add_parser("add-session", parents=[common])
-    for opt in ("--task", "--title", "--path", "--session-id", "--url", "--branch", "--started-at"):
+    s = sub.add_parser("add-agent", parents=[common])
+    for opt in ("--agent", "--path", "--session-id", "--url", "--started-at"):
         s.add_argument(opt, required=True)
     s.add_argument("--notes")
-    s.add_argument("--worker-id")
     s.add_argument("--worker-key")
     s.add_argument("--model")
     s.add_argument("--effort")
     s.add_argument("--off-ladder", action="store_true")
-    s.set_defaults(fn=cmd_add_session)
+    s.add_argument("--queue", nargs="+")
+    s.add_argument("--replace", action="store_true")
+    s.add_argument("--name")
+    s.set_defaults(fn=cmd_add_agent)
+
+    s = sub.add_parser("name", parents=[common])
+    s.add_argument("--agent", required=True)
+    s.add_argument("--replace", action="store_true")
+    s.set_defaults(fn=cmd_name)
+
+    s = sub.add_parser("agent", parents=[common])
+    s.add_argument("--agent", required=True)
+    s.add_argument("pairs", nargs="+", metavar="key=value")
+    s.set_defaults(fn=cmd_agent)
+
+    s = sub.add_parser("queue", parents=[common])
+    s.add_argument("--agent", required=True)
+    s.add_argument("groups", nargs="*", metavar="GROUP")
+    s.add_argument("--clear", action="store_true")
+    s.set_defaults(fn=cmd_queue)
+
+    s = sub.add_parser("move", parents=[common])
+    s.add_argument("--group", required=True)
+    s.add_argument("--to", required=True)
+    s.set_defaults(fn=cmd_move)
+
+    s = sub.add_parser("assign", parents=[common])
+    s.add_argument("--agent", required=True)
+    s.add_argument("--tasks", required=True)
+    s.add_argument("--title", required=True)
+    s.add_argument("--branch", required=True)
+    s.add_argument("--assigned-at")
+    s.add_argument("--notes")
+    s.set_defaults(fn=cmd_assign)
 
     s = sub.add_parser("set", parents=[common])
-    s.add_argument("--session", required=True)
+    s.add_argument("--assignment", required=True)
     s.add_argument("pairs", nargs="+", metavar="key=value")
     s.set_defaults(fn=cmd_set)
 
     s = sub.add_parser("note", parents=[common])
-    s.add_argument("--session", required=True)
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--agent")
+    g.add_argument("--assignment")
     s.add_argument("text")
     s.set_defaults(fn=cmd_note)
 
@@ -595,7 +895,27 @@ def main():
     a = p.parse_args()
     if getattr(a, "file", None) is None and a.global_file:
         a.file = a.global_file
-    a.fn(a)
+    with registry_lock(a):
+        a.fn(a)
+
+
+READ_ONLY = ("show", "board", "whois", "new-key", "name", "log")
+
+
+@contextlib.contextmanager
+def registry_lock(a):
+    """Serialise every command that writes the registry: load -> change -> save runs under an exclusive
+    lock on a sidecar file, so agents recorded in parallel never overwrite each other."""
+    path = getattr(a, "file", None)
+    if a.cmd in READ_ONLY or not path or not os.path.isdir(os.path.dirname(os.path.abspath(path))):
+        yield
+        return
+    with open(os.path.abspath(path) + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 if __name__ == "__main__":

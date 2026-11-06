@@ -1,8 +1,8 @@
 # Factory board: sample calls
 
-Every board call the manager makes, verbatim; fill the `<placeholders>`. Shapes and rules are in `protocol.md`; the order of the steps is in `SKILL.md`. The `Artifact`, `ArtifactData`, `ArtifactComments` and `SendMessage` calls were exercised against a live board with a manager session and a `claude --bg` worker; the `claude -p --cloud` doorbell was exercised with cloud workers in a factory run (2026-09).
+Every board call the manager makes, verbatim; fill the `<placeholders>`. Shapes and rules are in `protocol.md`; the order of the steps is in `SKILL.md`. The `Artifact`, `ArtifactData`, `ArtifactComments` and `SendMessage` calls were exercised against a live board with a manager session and a `claude --bg` worker; the `claude -p --cloud` doorbell was exercised with cloud workers in a factory run (2026-09), and on idle cloud agents with a second assignment (2026-11).
 
-Placeholders: `<url>` the board URL, `<run key>` from `registry.py … artifact`, `<id>` a worker id such as `w:tasks-4-5-7`, `<worker key>` from `registry.py new-key`, `<now>` from `date -u +%Y-%m-%dT%H:%M:%SZ`, `<v>` the `version` your last read or write of that document returned.
+Placeholders: `<url>` the board URL, `<run key>` from `registry.py … artifact`, `<id>` an agent's worker id such as `w:a1` (`w:a1.r2` for a replacement session), `<asg>` an assignment id such as `a1-2`, `<worker key>` from `registry.py new-key`, `<now>` from `date -u +%Y-%m-%dT%H:%M:%SZ`, `<v>` the `version` your last read or write of that document returned.
 
 ## Load the tools
 
@@ -18,7 +18,7 @@ The first publish of a repository's board (SKILL.md §2), from the scratchpad co
 Artifact({
   file_path: "<scratchpad>/factory-board-<repo>.html",
   icon: "dashboard",
-  description: "Factory board for <owner/repo>: the current run's workers, reports, questions and messages.",
+  description: "Factory board for <owner/repo>: the current run's agents, reports, questions and messages.",
   capabilities: { "db": {}, "comments": { "composer_only": true } }
 })
 ```
@@ -80,18 +80,22 @@ ArtifactData({
 
 Check: `ArtifactData({ action: "list", url: "<url>", collection: "run" })`, and the same for `board`, `mail`, `cursors`.
 
-## Each dispatch
+## Each agent start
+
+Once per agent session (a replacement session gets its own five documents):
 
 ```
 ArtifactData({
   action: "batch", url: "<url>",
   writes: [
     { op: "set", collection: "board", doc_id: "<id>",
-      data: { worker_id: "<id>", tasks: [4, 5, 7], title: "<summary>", status: "running",
+      data: { worker_id: "<id>", agent: "a1", name: "Ada", agent_title: "Ada (a1)", rung: "opus/medium", status: "running",
+              assignment: "a1-1", tasks: [4, 5, 7], title: "<summary>",
               branch: "factory/<bundle>/tasks-4-5-7", pr: null, verified_sha: null,
+              queue: [[9, 10], [14]], merged: [],
               next: "Waiting for the first progress report", updated_at: "<now>" } },
     { op: "set", collection: "reports", doc_id: "<id>",
-      data: { worker_id: "<id>", key: "<worker key>", tasks: [4, 5, 7], phase: "dispatched",
+      data: { worker_id: "<id>", key: "<worker key>", assignment: "a1-1", tasks: [4, 5, 7], phase: "dispatched",
               tasks_done: [], branch: null, head_sha: null, pr: null, report: "", updated_at: "<now>" } },
     { op: "set", collection: "mail", doc_id: "sfm~<id>",
       data: { from: "sfm", to: "<id>", key: "<run key>", last_seq: 0, messages: {}, updated_at: "<now>" } },
@@ -102,6 +106,29 @@ ArtifactData({
   ]
 })
 ```
+
+## Next assignment
+
+The `assign` entry names the assignment; the full assignment message goes in the doorbell (§ Doorbell), because it is longer than a message's 2,000 characters. Card first, so the owner sees the new assignment and the shorter queue:
+
+```
+ArtifactData({
+  action: "batch", url: "<url>",
+  writes: [
+    { op: "update", collection: "mail", doc_id: "sfm~<id>", if_version: <v>,
+      data: { messages: { "004": { seq: 4, key: "<run key>", kind: "assign", re: null, tasks: [9, 10], needs: "none",
+                                   text: "Assignment a1-2 for Ada: tasks 9, 10 (<summary>). Branch factory/<bundle>/tasks-9-10 from a fresh origin/<base>. The full assignment message is in this session.",
+                                   at: "<now>" } },
+              last_seq: 4, updated_at: "<now>" } },
+    { op: "update", collection: "board", doc_id: "<id>", if_version: <v>,
+      data: { status: "running", assignment: "a1-2", tasks: [9, 10], title: "<summary>",
+              branch: "factory/<bundle>/tasks-9-10", pr: null, verified_sha: null, queue: [[14]],
+              next: "Assignment a1-2 sent (sfm~<id>#4); waiting for its first progress report", updated_at: "<now>" } }
+  ]
+})
+```
+
+Rebalancing moves a group between two cards: update both `queue` arrays in one batch.
 
 ## Read
 
@@ -120,11 +147,11 @@ ArtifactData({ action: "get", url: "<url>", collection: "cursors", doc_id: "sfm"
 ArtifactComments({ action: "read", url: "<url>" })
 ```
 
-Check a sender: `registry.py … whois --from <id> --key <key from the entry>` prints `sfm` or the session, and exits 1 on a mismatch.
+Check a sender: `registry.py … whois --from <id> --key <key from the entry>` prints `sfm` or the agent, and exits 1 on a mismatch or a replaced session.
 
 ## Answer
 
-Append to the worker's inbox (`get` it first for `<v>` and `last_seq`; nested maps merge, so only the new entry is sent), and move your cursor in the same batch:
+Append to the agent's inbox (`get` it first for `<v>` and `last_seq`; nested maps merge, so only the new entry is sent), and move your cursor in the same batch:
 
 ```
 ArtifactData({
@@ -142,16 +169,16 @@ ArtifactData({
               threads: { "<thread id>": { comments: 2, state: "resolved", by: "claude" } },
               updated_at: "<now>" } },
     { op: "update", collection: "board", doc_id: "<id>", if_version: <v>,
-      data: { next: "Owner decided task 4 (sfm~<id>#2). Waiting for the worker's ack.", updated_at: "<now>" } }
+      data: { next: "Owner decided task 4 (sfm~<id>#2). Waiting for the agent's ack.", updated_at: "<now>" } }
   ]
 })
 ```
 
-Leave `origin` out when the answer is the manager's own. Kinds the manager sends: `answer`, `decision`, `relay`, `steer`, `note`.
+Leave `origin` out when the answer is the manager's own. Kinds the manager sends: `assign`, `answer`, `decision`, `relay`, `steer`, `note`.
 
 ## Doorbell
 
-The rule is in SKILL.md §5: a cloud worker is rung only with `claude -p … --cloud`, and the doorbell carries the whole instruction. Write it to a file first (a permission hook may block a command line that quotes a rebase or a lease-protected push):
+The rule is in SKILL.md §5: a cloud agent is rung only with `claude -p … --cloud`, and the doorbell carries the whole instruction (for an `assign` entry: the whole assignment message, `dispatch` §5). Write it to a file first (a permission hook may block a command line that quotes a rebase or a lease-protected push):
 
 ```bash
 cat > <scratchpad>/doorbell-<id>-2.md <<'EOF'
@@ -164,13 +191,13 @@ cd <clone> && claude -p "$(cat <scratchpad>/doorbell-<id>-2.md)" --cloud <sessio
 
 `</dev/null` keeps `claude -p` from waiting three seconds for stdin. It prints `Sent to cloud session.` with the `Session ID:` and `View:` lines.
 
-A local `claude --bg` worker gets the same text through Remote Control instead:
+A local `claude --bg` agent gets the same text through Remote Control instead:
 
 ```
 SendMessage({ to: "<agent_name from ListAgents>", message: "<the same text>" })
 ```
 
-The worker's `cursors/<id>.reads["sfm~<id>"]` reaching 2 proves it read the entry; its `ack` entry, or the push the message asked for, proves it acted.
+The agent's `cursors/<id>.reads["sfm~<id>"]` reaching 2 proves it read the entry; its `ack` entry, or the push the message asked for, proves it acted.
 
 ## Comment threads
 
@@ -178,7 +205,7 @@ A signed reply (only when no automatic reply was posted, or as a follow-up that 
 
 ```
 ArtifactComments({ action: "reply", url: "<url>", thread_id: "<thread id>",
-                   text: "## Software Factory Manager\nSent to worker <id> as decision sfm~<id>#2: <the answer>.",
+                   text: "## Software Factory Manager\nSent to agent <id> as decision sfm~<id>#2: <the answer>.",
                    acknowledge_duplicate: true })
 ArtifactComments({ action: "resolve", url: "<url>", thread_id: "<thread id>" })
 ```
@@ -197,7 +224,27 @@ Record what the read found, in the same batch as the rest of the cursor update: 
 
 ## Cleanup
 
-After a merged worker, read every document again first: the worker may have written after your last read (an `ack`, its final report), and then a pin fails and nothing is deleted. An unpinned delete of an existing document is refused too, so pin each entry to the version this read returns:
+**After a merged assignment** (the agent stays): read the agent's documents again first (an `ack` or a final report may have landed since your last read), handle anything new, then in one batch record the merge on the card and drop the handled entries of your own mailbox to the agent (every entry its cursor has passed whose fact is recorded elsewhere). The agent trims its own mailbox to you at the start of its next assignment.
+
+```
+ArtifactData({ action: "get", url: "<url>", collection: "board",   doc_id: "<id>" })
+ArtifactData({ action: "get", url: "<url>", collection: "mail",    doc_id: "sfm~<id>" })
+ArtifactData({ action: "get", url: "<url>", collection: "cursors", doc_id: "<id>" })
+ArtifactData({
+  action: "batch", url: "<url>",
+  writes: [
+    { op: "update", collection: "board", doc_id: "<id>", if_version: <v>,
+      data: { merged: [ /* earlier entries */ { assignment: "a1-1", tasks: [4, 5, 7], pr: 57, sha: "<short sha>" } ],
+              next: "a1-1 merged in PR #57 (<short sha>)", updated_at: "<now>" } },
+    { op: "update", collection: "mail", doc_id: "sfm~<id>", if_version: <v>,
+      data: { messages: { "001": { "__delete__": true }, "002": { "__delete__": true } }, updated_at: "<now>" } }
+  ]
+})
+```
+
+`merged` is an array, so send the whole list (the card shows the last 10; keep at most 20).
+
+**After an agent session is replaced or retired, or when the run closes**: read every document of that session again first: the agent may have written after your last read (an `ack`, its final report), and then a pin fails and nothing is deleted. An unpinned delete of an existing document is refused too, so pin each entry to the version this read returns:
 
 ```
 ArtifactData({ action: "get", url: "<url>", collection: "board",   doc_id: "<id>" })
@@ -225,7 +272,9 @@ ArtifactData({
 })
 ```
 
-Drop one relay every worker has read:
+A replacement session's card (`w:a1.r2`) carries the slot's `merged` list over: copy it into the new card when you create it.
+
+Drop one relay every agent has read:
 
 ```
 ArtifactData({ action: "update", url: "<url>", collection: "mail", doc_id: "sfm~all-workers", if_version: <v>,
@@ -234,7 +283,7 @@ ArtifactData({ action: "update", url: "<url>", collection: "mail", doc_id: "sfm~
 
 ## Close a run
 
-After the per-worker cleanup (`history` is an array, so send the whole list: the previous entries plus the new one, at most 20):
+After the per-agent cleanup (`history` is an array, so send the whole list: the previous entries plus the new one, at most 20):
 
 ```
 ArtifactData({
@@ -252,6 +301,6 @@ ArtifactData({
 ArtifactComments({ action: "watch", url: "<url>", on: false })
 ```
 
-## Worker side
+## Agent side
 
-A worker's calls are in its brief (the dispatch skill's `references/worker-brief.md`, `## Factory board`): `get` then `update` of `mail/<id>~sfm` to send, `update` of `reports/<id>` at each checkpoint, `get` of `mail/sfm~<id>` and `mail/sfm~all-workers` plus an `update` of `cursors/<id>` to read. A worker never calls `Artifact` or writes a comment.
+An agent's calls are in its brief (the dispatch skill's `references/worker-brief.md`, `## Factory board`): `get` then `update` of `mail/<id>~sfm` to send, `update` of `reports/<id>` at each checkpoint (its `assignment` field names the one it works on), `get` of `mail/sfm~<id>` and `mail/sfm~all-workers` plus an `update` of `cursors/<id>` to read, and at the start of each new assignment a trim of the entries the manager has read from `mail/<id>~sfm`. An agent never calls `Artifact` or writes a comment.
