@@ -8,14 +8,16 @@ The marketplace is named `myspec` and has two plugins.
 
 ### myspec-mcp
 
-Connects Claude Code to MySpec. It registers the `@myspec/mcp-server` MCP server (as `myspec`) and adds five skills. Install this one first: `myspec-factory` needs it.
+Connects Claude Code to MySpec. It registers the `@myspec/mcp-server` MCP server (as `myspec`) and adds seven skills. Install this one first: `myspec-factory` needs it.
 
 | Skill | Use it to |
 |---|---|
 | `/myspec-mcp:setup` | Sign in, use an API token, switch organization, fix connection errors |
-| `implement` | Build a spec bundle one task at a time: ask about open points, write tests from acceptance criteria, check the constitution, mark the task done on MySpec |
+| `implement` | Build a spec bundle one task at a time: claim the task on MySpec's task board, ask about open points, write tests from acceptance criteria, check the constitution, mark the task done |
 | `analyze` | Check a bundle for gaps and conflicts, and check whether the code matches the spec (read-only) |
 | `spec-authoring` | Write or update constitution, requirements, solution, tasks, change proposals, and OpenSpec changes in MySpec's formats, then push them |
+| `artifacts` | Read, create, revise and roll back MySpec artifacts such as clickable prototypes, and link them from specs |
+| `start-session` | Start a MySpec spec session for you, with an opening message written from your repository, and hand you the link |
 | `reverse-bridge` | Share a local repository with a MySpec brownfield spec session |
 
 Details: [plugins/myspec-mcp/README.md](plugins/myspec-mcp/README.md).

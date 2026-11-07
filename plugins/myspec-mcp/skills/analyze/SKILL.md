@@ -17,7 +17,7 @@ This skill only reads. It produces a findings table and, when asked, a remediati
 | Spec consistency | Are the documents complete, unambiguous, and consistent with each other? | The bundle only |
 | Convergence | Does the code implement what the spec says, and only that? | The bundle plus the repository |
 
-Pick spec consistency before implementation starts or after spec edits. Pick convergence at milestone checkpoints, when resuming a repo whose checkboxes look wrong, or when the user asks "does the code match the spec".
+Pick spec consistency before implementation starts or after spec edits. Pick convergence at milestone checkpoints, when resuming a repo whose task statuses look wrong, or when the user asks "does the code match the spec".
 
 ## Procedure
 

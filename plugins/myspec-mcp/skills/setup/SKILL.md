@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up, sign in to, verify, or troubleshoot the MySpec MCP server (@myspec/mcp-server) in Claude Code. Use when the user says "set up MySpec", "connect to MySpec", "myspec login", "myspec not connected", "use a MySpec API token", "MYSPEC_API_TOKEN", "switch MySpec organization", or when any mcp__plugin_myspec-mcp_myspec__* tool call fails with "Not authenticated", "run login", "missing required claims (sub, org)", or an HTTP 401/404 from MySpec.
+description: Set up, sign in to, verify, or troubleshoot the MySpec MCP server (@myspec/mcp-server) in Claude Code. Use when the user says "set up MySpec", "connect to MySpec", "myspec login", "am I signed in to MySpec", "myspec not connected", "use a MySpec API token", "MYSPEC_API_TOKEN", "switch MySpec organization", or when any mcp__plugin_myspec-mcp_myspec__* tool call fails with "Not authenticated", "run login", "missing required claims (sub, org)", "permission denied — this action needs the … role", "the task board is turned off", or an HTTP 401/404 from MySpec.
 user-invocable: true
 ---
 
@@ -14,21 +14,24 @@ Follow the steps in order. Stop at the first step that fails and give the user t
 
 ```bash
 node -v                                   # must be v22 or newer
-npx -y @myspec/mcp-server --version       # warms the npx cache; must be 0.3.0 or newer
+npx -y @myspec/mcp-server --version       # warms the npx cache; 1.1.2 or newer
 ```
 
 - Node below 22: tell the user to install Node 22+ (nvm, brew, or nodejs.org) and stop.
-- Version below 0.3.0: the npx cache is stale. Run `npx -y @myspec/mcp-server@latest --version`, then ask the user to restart Claude Code.
-- Version 0.3.x exposes 17 tools (projects, spec files, `get_attachment`, `upload_attachment`). Spec sessions, artifacts, attachment listing and reading, stream tokens, and paginated reads need 0.4.0, which is currently only the `next` prerelease. Tell the user when a request needs one of those.
+- Version below 1.1.2: the npx cache holds an old release that lacks tools the skills use (the task board needs 1.1.1, `move_spec_folder` 1.1.2; the `implement` skill's `references/mcp-tools.md` lists which release added what). Run `npx -y @myspec/mcp-server@latest --version`, then ask the user to restart Claude Code.
 - Confirm the server is registered: the tool list should contain `mcp__plugin_myspec-mcp_myspec__list_projects`. If not, the plugin is not installed or enabled. Tell the user to run `/plugin install myspec-mcp@myspec`, then restart Claude Code.
 - Never run `claude mcp add myspec ...`. That registers a second copy of the server next to the plugin's own.
 
 ## 2. Sign-in check
 
-Call `mcp__plugin_myspec-mcp_myspec__list_projects` with `limit: 1`.
+```bash
+npx -y @myspec/mcp-server auth status      # non-interactive; safe to run yourself
+```
 
-- A project list (even empty) means the user is signed in. Report the result and stop.
-- An error containing `Not authenticated. Set MYSPEC_API_TOKEN ... or run npx @myspec/mcp-server login` means go to step 3. On 0.3.0 it is wrapped as `list_projects failed: Could not discover endpoints from https://app.myspec.dev/api/v1/config (Not authenticated. ...)`; the parenthetical is the real cause.
+It prints `Signed in to <url>` with the account, the active organization and the kind of credential, renewing an expired access token first; it exits 2 when nobody is signed in (go to step 3). Report the account and organization; a different organization than the one owning the user's project explains `HTTP 404` errors later. Do not paste the credential line into the chat. Then call `mcp__plugin_myspec-mcp_myspec__list_projects` with `limit: 1`:
+
+- A project list (even empty) means the server works. Report the result and stop.
+- An error containing ``Not authenticated. Set MYSPEC_API_TOKEN to a MySpec API token, or run `npx @myspec/mcp-server login` to sign in.`` means go to step 3. It is usually wrapped as `list_projects failed: Could not discover endpoints from https://app.myspec.dev/api/v1/config (Not authenticated. ...)`; the parenthetical is the real cause.
 - Any other error: see `references/troubleshooting.md`.
 
 ## 3. Sign in (the user runs this, not you)
@@ -36,14 +39,14 @@ Call `mcp__plugin_myspec-mcp_myspec__list_projects` with `limit: 1`.
 `login` opens a browser and blocks on a loopback callback, and it prompts for an organization when the user belongs to several. It cannot complete inside a foreground Bash call. Hand the command to the user to run in their own terminal, or with the `!` prefix in the Claude Code prompt:
 
 ```bash
-npx -y @myspec/mcp-server login                 # browser on this machine
+npx -y @myspec/mcp-server login                 # browser on this machine (alias of `auth login`)
 npx -y @myspec/mcp-server login --org <slug>    # also pin the active organization
 npx -y @myspec/mcp-server login --paste         # remote box or container: no auto-open
 ```
 
 Notes for `--paste`: the page shows a token shaped like `<code>.<state>`. The user must copy the whole value including the dot, and paste it within 60 seconds of finishing sign-in.
 
-After the user confirms, repeat step 2. No Claude Code restart is needed.
+After the user confirms, repeat step 2 (`auth status` shows the result). No Claude Code restart is needed.
 
 ## 4. Unattended use: API token
 
@@ -75,7 +78,7 @@ Precedence is `MYSPEC_API_TOKEN`, then `apiToken` in `~/.myspec/oauth_creds.json
 npx -y @myspec/mcp-server logout
 ```
 
-This revokes the refresh token and deletes `~/.myspec/oauth_creds.json`, including any file-based `apiToken`. `settings.json` and an exported `MYSPEC_API_TOKEN` are left untouched.
+This revokes the refresh token and clears the session credentials. A file-based `apiToken` is kept, so an unattended install keeps working: to remove it too, delete the `apiToken` field in `~/.myspec/oauth_creds.json`. `settings.json` and an exported `MYSPEC_API_TOKEN` are left untouched.
 
 ## Local state
 
@@ -83,6 +86,7 @@ This revokes the refresh token and deletes `~/.myspec/oauth_creds.json`, includi
 |---|---|
 | `~/.myspec/settings.json` | Non-secret: `userAuthUrl` plus discovered webapp, platform, and ai-agent URLs |
 | `~/.myspec/oauth_creds.json` | Secret, mode 0600: access token, refresh token, expiry, user identity, optional `apiToken` |
+| `~/.myspec/oauth_creds.json.lock` | Lock that keeps two servers (or a server and the CLI) from refreshing the token at once; safe to leave |
 | `~/.myspec/project/<project>/file/<file>/rev/<n>/<name>` | Read cache used by `read_spec_file` (root overridable with `MYSPEC_DOWNLOAD_ROOT`) |
 
 ## Troubleshooting

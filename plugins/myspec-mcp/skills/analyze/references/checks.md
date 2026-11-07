@@ -26,7 +26,7 @@ Weights follow the MySpec platform's own tasks reviewer: requirements coverage 3
 ### Task coverage and quality (coverage 30%, quality 25%)
 - Every FR appears on at least one task's `_Requirements:_` line (CRITICAL when not). NFRs appear on relevant tasks (MEDIUM).
 - Every `_Requirements:_` id exists in requirements.md (HIGH when unknown).
-- Every task has acceptance criteria, implementation detail, and the three annotation lines with values inside the italics; task lines use `- [ ] N\. Title` (MEDIUM).
+- Every task has acceptance criteria, implementation detail, and the three annotation lines with values inside the italics (enterprise bundles also `_Verification:_` and `_Quality Gate:_`); task lines use `- [ ] N\. Title` with `[ ]`, `[-]` or `[x]` as the marker (MEDIUM).
 - Tasks use the components, APIs, and data models named in solution.md (MEDIUM).
 
 ### Dependencies (20%)
@@ -35,7 +35,8 @@ Weights follow the MySpec platform's own tasks reviewer: requirements coverage 3
 
 ### Sizing and organisation (15% + 10%)
 - Complexity values are Small, Medium, or Large; nothing implies more than five days (MEDIUM).
-- Milestones are outcome-named `## Milestone N: Name`, numbering is document-wide, `## Dependency Graph` closes the file (LOW). A `## Branch Plan` section just before it is a plugin convention, not a finding; when present, flag a `_Dependencies:_` that crosses lanes or a path owned by two lanes (HIGH).
+- Milestones are outcome-named `## Milestone N: Name`, numbering is document-wide, `## Dependency Graph` closes the file (LOW). A `## Branch Plan` section just before it (written by myspec-factory 1.x) is a plugin convention, not a finding; when present, flag a `_Dependencies:_` that crosses lanes or a path owned by two lanes (HIGH). Any checkbox line that is not a task (a checklist in a note) is a finding (MEDIUM): the platform turns every checkbox into a task on its board.
+- Board relationships (`list_tasks`): a `blocked_by` that contradicts `_Dependencies:_`, or a cycle, is a finding (MEDIUM). The board fields are not part of the file; report, do not edit them.
 
 ## Convergence mode
 
@@ -50,8 +51,8 @@ Classify each requirement after reading the modules solution.md names and search
 | unrequested | Behaviour or module in the code with no requirement or task (MEDIUM; may be legitimate) |
 
 Also check:
-- Checkbox drift: tasks marked `[x]` whose acceptance criteria are not met, or unchecked tasks whose work exists (HIGH). Report; do not flip boxes.
+- Status drift: tasks `[x]` (done) whose acceptance criteria are not met, tasks `[ ]` whose work exists, or tasks `[-]` (in progress) with no work and no assignee activity (HIGH). Report; do not change statuses.
 - Test traceability: percentage of criteria with a test whose name carries the requirement id.
 - Constitution drift: dependencies added, patterns introduced, or standards broken since the spec was approved (CRITICAL when forbidden).
 
-Remediation for missing or partial items is append-only. MySpec format: a `## Milestone N: Convergence` section before `## Dependency Graph` (before `## Branch Plan` when one exists), task numbers continuing after the highest existing one, one task per gap in the standard format, each citing the requirement ids and sized Small or Medium. OpenSpec format: a `## N. Convergence` group with `- [ ] N.M` tasks. Existing tasks are never edited or renumbered.
+Remediation for missing or partial items is append-only. MySpec format: a `## Milestone N: Convergence` section before `## Dependency Graph` (before a 1.x `## Branch Plan` when one exists), task numbers continuing after the highest existing one, one task per gap in the standard format, each citing the requirement ids and sized Small or Medium. OpenSpec format: a `## N. Convergence` group with `- [ ] N.M` tasks. Existing tasks are never edited or renumbered.

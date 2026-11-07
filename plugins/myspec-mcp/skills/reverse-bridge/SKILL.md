@@ -1,12 +1,14 @@
 ---
 name: reverse-bridge
-description: Share a local repository with a MySpec brownfield spec session by running the MySpec reverse MCP bridge. Use when the user says "share my local code with MySpec", "let MySpec read this repo", "myspec reverse", "mount my workspace for MySpec", or when a MySpec webapp session reports reverse_mcp_unavailable or cannot read local files. Requires a signed-in MySpec CLI (see the setup skill).
+description: Share a local repository with a MySpec brownfield spec session by running the MySpec reverse MCP bridge (also before the start-session skill starts a brownfield session). Use when the user says "share my local code with MySpec", "let MySpec read this repo", "myspec reverse", "mount my workspace for MySpec", or when a MySpec webapp session reports reverse_mcp_unavailable or cannot read local files. Requires a signed-in MySpec CLI (see the setup skill).
 user-invocable: false
 ---
 
 # MySpec reverse bridge
 
 When a user drafts a brownfield spec in the MySpec webapp, the cloud AI agent needs to read their existing codebase. The `reverse` command flips the usual MCP direction: the CLI dials out to the ai-agent over WebSocket and becomes an MCP server exposing read-only tools scoped to one local directory. Nothing inbound reaches the laptop.
+
+When Claude starts the brownfield session itself (the `start-session` skill), start the bridge first so the session's first turn can already read the code, and keep it running afterwards.
 
 This is a long-running process, separate from the `myspec` server that this plugin registers. It does not affect Claude Code's own MySpec tools.
 

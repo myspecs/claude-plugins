@@ -32,10 +32,12 @@ A `tasks.md` with a `## Branch Plan` (written by myspec-factory 1.x) keeps it: e
 
 ## 2. Derive the task board
 
+Read statuses with `list_tasks` (`file_id` the bundle's `tasks.md`; `[ ]` pending, `[-]` in progress, `[x]` done), or from the file when the task board is off. A `[-]` task with no registry assignment was started by someone outside the run: leave it out of the groups and ask the user.
+
 | Status | Source of truth |
 |---|---|
-| done | `- [x]` in `tasks.md` on the platform |
-| in flight | An open pull request or remote branch named `factory/<bundle>/task-<N>` or `factory/<bundle>/tasks-<N1>-<N2>-…` listing N; a pull request titled `task N1, N2, …:` whose list holds N (also accept `claude/`-prefixed branches whose title or body names task N); an assignment in the registry with status `running` or `pushed` that carries N; and from a 1.x run, `factory/<bundle>/lane-<L>` or a `lane L:` title for a lane listing N in `## Branch Plan` |
+| done | `- [x]` in `tasks.md` on the platform (`list_tasks` status `done`) |
+| in flight | An open pull request or remote branch named `factory/<bundle>/task-<N>` or `factory/<bundle>/tasks-<N1>-<N2>-…` listing N; a pull request titled `task N1, N2, …:` whose list holds N (also accept `claude/`-prefixed branches whose title or body names task N); an assignment in the registry with status `running` or `pushed` that carries N; a task `[-]` (`in_progress`) set by an agent's assignment; and from a 1.x run, `factory/<bundle>/lane-<L>` or a `lane L:` title for a lane listing N in `## Branch Plan` |
 | blocked | A pull request labelled `blocked`, or whose `## Factory report` says `BLOCKED` |
 | queued | `- [ ]`, not in flight, planned in an agent's `queue` in the registry |
 | ready | `- [ ]`, not in flight, every `_Dependencies:_` number done |
