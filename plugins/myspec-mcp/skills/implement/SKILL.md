@@ -27,7 +27,7 @@ Bundle shapes: greenfield (constitution, requirements, solution, tasks; the ente
 ## 2. Resume state
 
 - `list_tasks` with `project_id` and the bundle's `tasks.md` as `file_id`: each task's `status` (`[ ]` pending, `[-]` in progress, `[x]` done), assignee and relationships, plus the file's `content_version`. Then `read_spec_file` for the task text. The checkboxes are the shared truth. When the task board is turned off, `get_spec_file` and `read_spec_file` alone (`references/write-back-protocol.md` § Task status).
-- A task `[-]` assigned to you (`assignee_user_id: "me"` filter) is one you or an earlier session started: resume it before picking a new one.
+- A task `[-]` assigned to you (`assignee_user_id: "me"` filter) and without an `agent:<name>` label is one you or an earlier session started: resume it before picking a new one. A `[-]` task with an `agent:` label belongs to a Software Factory agent, even on your account: leave it alone.
 - Read `.specs/<bundle>/progress.md` if it exists and `git log --oneline -20` for what the last session did.
 - If the repo already has an implementation that the checkboxes do not reflect, run the `analyze` skill in convergence mode before continuing rather than redoing work.
 
@@ -48,7 +48,7 @@ Read the constitution in full; it is binding. Read the rest in order, but load o
 
 ## 4. Pick the next task
 
-Parse `tasks.md` per `references/tasks-format.md`. "Next" is the first pending task in document order whose `_Dependencies:_` are all `[x]` and that no board relationship marks `blocked_by` an unfinished task (Spec Kit: phase order; OpenSpec: the first unchecked box). Skip a `[-]` task someone else is assigned to. Honour a user-named task, but flag unmet dependencies and a task already in progress for someone else.
+Parse `tasks.md` per `references/tasks-format.md`. "Next" is the first pending task in document order whose `_Dependencies:_` are all `[x]` and that no board relationship marks `blocked_by` an unfinished task (Spec Kit: phase order; OpenSpec: the first unchecked box). Skip a `[-]` task that has another assignee or an `agent:<name>` label (a factory agent is building it; `references/tasks-format.md` § Choosing the next task). Honour a user-named task, but flag unmet dependencies and a task already in progress for someone else or an agent.
 
 Claim it before coding, so collaborators on the board see who works on what: `set_task_status` to `in_progress` (with `expected_versions` from `list_tasks`), and, when the task has no assignee, `update_tasks` with `assignee_user_id: "me"`. Assign it to someone else only when the user asks. Before coding, restate the task title, its acceptance criteria, and the requirement ids on its `_Requirements:_` line, then re-read exactly those FR/NFR (or AR/CR) sections and the solution modules they touch.
 

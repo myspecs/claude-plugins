@@ -12,7 +12,8 @@ Usage: tasks-mark.py --file .specs/<bundle>/tasks.md --tasks 22,23,24 [--done] [
   --dry-run  print what would change and write nothing
 
 Task lines it recognises, with `[ ]`, `[-]` or `[x]`: `- [ ] 22\\. Title` and `- [ ] 22. Title` (MySpec),
-`- [ ] 2.1 Title` (OpenSpec), `- [ ] T007 Title` (Spec Kit); `22` never matches `22.1`. A task id that matches no line, or more than one, stops the run with nothing written.
+`- [ ] 2.1 Title` (OpenSpec), `- [ ] T007 Title` (Spec Kit); `22` never matches `22.1`, `T1` never `T10`.
+Lines inside fenced code blocks (``` or ~~~) are never tasks, as on the platform's task board. A task id that matches no line, or more than one, stops the run with nothing written.
 Then upload the file with `update_spec_file` and the `expected_version` of the revision this copy came from.
 Exit codes: 0 ok, 1 not found or ambiguous, 2 usage.
 """
@@ -48,10 +49,24 @@ def main():
     lines = original.splitlines(keepends=True)
     eol = "\r\n" if lines and lines[0].endswith("\r\n") else "\n"
 
+    # Lines inside fenced code blocks are examples, not tasks (the platform's parser skips them too).
+    in_code, fence = [], None
+    for ln in lines:
+        m = re.match(r"^[ \t]*(`{3,}|~{3,})", ln)
+        if fence is None and m:
+            fence = m.group(1)[0] * len(m.group(1))
+            in_code.append(True)
+        elif fence is not None:
+            in_code.append(True)
+            if m and m.group(1).startswith(fence):
+                fence = None
+        else:
+            in_code.append(False)
+
     plan = []  # (task id, line index)
     for t in ids:
         pat = re.compile(r"^[ \t]*- \[[ xX-]\] " + re.escape(t) + r"(\\?\.)?(?=[ \t])")
-        hits = [i for i, ln in enumerate(lines) if pat.match(ln)]
+        hits = [i for i, ln in enumerate(lines) if not in_code[i] and pat.match(ln)]
         if len(hits) != 1:
             print(f"tasks-mark: task {t} matches {len(hits)} lines" + (f" ({', '.join(str(h + 1) for h in hits)})" if hits else "")
                   + "; nothing written", file=sys.stderr)
