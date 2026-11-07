@@ -6,13 +6,13 @@ user-invocable: false
 
 # Author specs in MySpec formats
 
-Use this skill to produce documents that look exactly like the ones the MySpec platform generates, so they pass its reviewers, render correctly in the webapp, and can be consumed by the `implement` skill. Tool calls go through `mcp__plugin_myspec-mcp_myspec__<tool>` (signatures in `../implement/references/mcp-tools.md`).
+Use this skill to produce documents that look exactly like the ones the MySpec platform generates, so they pass its reviewers, render correctly in the webapp, and can be consumed by the `implement` skill. When the user would rather have MySpec's own AI write them in the webapp, use the `start-session` skill instead. Tool calls go through `mcp__plugin_myspec-mcp_myspec__<tool>` (signatures in `../implement/references/mcp-tools.md`).
 
 ## 1. Pick the document set
 
 | Scenario | Documents, in writing order | Where they live on the platform |
 |---|---|---|
-| Greenfield (new product or service) | `constitution.md`, `requirements.md`, `solution.md`, `tasks.md` | `specs/<bundle>/` |
+| Greenfield (new product or service) | `constitution.md`, `requirements.md`, `solution.md`, `tasks.md` (the enterprise workflow adds `quality.md`, `file_type` `quality`) | `specs/<bundle>/` |
 | MySpec brownfield (change to an existing product) | `proposal.md`, `requirements.md` (delta), optional `tasks.md` | `specs/<bundle>/` |
 | OpenSpec brownfield (OpenSpec CLI compatible) | `proposal.md`, `specs/<capability>/spec.md` per capability, optional `design.md`, `tasks.md` | `openspec/changes/<change-id>/` |
 
@@ -45,16 +45,18 @@ Quality bar for every document: minimal but complete (focused, not thin), review
 - Constitution: all nine sections present and in order; 3 to 5 items each; `N/A` where nothing applies; every constraint traceable to a user decision.
 - Requirements: technology-neutral; every FR has testable EARS+ acceptance criteria; every NFR has a measurable target and a priority; no architecture prescriptions; Data and Integration sections at most five bullets each.
 - Solution: only approved technology; Mermaid `flowchart` and `erDiagram` present (plus `sequenceDiagram` when three or more modules); every measurable NFR maps to a Success Criteria row; decisions carry rationale and alternatives.
-- Tasks: every FR covered by at least one task; dependencies explicit; sizes within Small/Medium/Large; `- [ ] N\. Title` shape with the three annotation lines.
+- Tasks: every FR covered by at least one task; dependencies explicit; sizes within Small/Medium/Large; `- [ ] N\. Title` shape with the three annotation lines. No other checkbox lines anywhere in the file: the platform turns every checkbox into a task. When revising an existing `tasks.md`, keep every task's marker (`[x]` done, `[-]` in progress) as it is; never reset progress.
 - OpenSpec deltas: every ADDED or MODIFIED requirement has SHALL/MUST text and at least one `#### Scenario:` with WHEN/THEN bullets; one capability per file; capability names are module nouns, not change names.
 - No document metadata footers (version, date, status) anywhere.
+- UI and flows: when the project has an artifact for a screen or flow the document describes (a clickable prototype, `list_artifacts`), link it with `[Name](artifacts/<slug>)` there (the `artifacts` skill). Use only slugs that exist.
 - Plugin conventions the platform does not generate but tolerates: a `## Clarifications` section at the end of `requirements.md` and `- Clarification:` bullets under tasks (see the `implement` skill). Keep them; they record decisions.
 
 ## 5. Push to MySpec
 
 1. Find the project with `list_projects` (offer `create_project` if none).
-2. For each new file: `upload_spec_file` with `project_id`, the platform `file_path`, `local_file_path` (absolute), and `file_type`. The type is derived from the basename for constitution, requirements, solution, tasks, and proposal; pass `openspec-spec` for OpenSpec `design.md` and delta files (the only other value).
+2. For each new file: `upload_spec_file` with `project_id`, the platform `file_path`, `local_file_path` (absolute), and `file_type`. The type is derived from the basename for constitution, requirements, solution, tasks, quality, and proposal; pass `openspec-spec` for OpenSpec `design.md` and delta files (the only other value).
 3. If the path already exists, `get_spec_file` for `content_version`, then `update_spec_file` with `expected_version`. Follow `../implement/references/write-back-protocol.md` on conflicts. Write one revision per file per run.
-4. Report the file ids and paths written.
+4. To move or rename a bundle under `specs/`, use `move_spec_folder` (ids and revisions are kept); never re-upload under a new path and trash the old one.
+5. Report the file ids and paths written.
 
 Path rules enforced by `upload_spec_file`: root `specs/` or `openspec/`, no `..`, at most three directory levels below the root. OpenSpec capability deltas at `openspec/changes/<id>/specs/<capability>/spec.md` are four levels deep, so new ones cannot be created through MCP even though the webapp workflow writes them. Upload the proposal, design, and tasks, keep new capability deltas local for the OpenSpec CLI, and tell the user. Deltas that already exist on the platform can still be updated with `update_spec_file`. Do not flatten the path; the OpenSpec tooling (`/opsx:apply`, `openspec archive`) depends on it.

@@ -14,7 +14,7 @@ The watch scripts live in the `watch` skill: `<plugin root>/skills/watch/scripts
 |---|---|
 | `gate.py <clone> <pr> --reviewer <login> --verified-sha <sha> [--paths …]` | The ready-to-merge gate (§3) from fresh GitHub state, read-only: one PASS/FAIL line per item, exit 0 only when every item passes |
 | `migration-check.py <clone> <base-ref> <head-ref>` | New migrations sort after every migration on the base, and applied ones are untouched (gate item 7 runs it; verifiers can too) |
-| `tasks-mark.py --file <tasks.md> --tasks 22,23 [--done] [--note "Merged: PR #n (sha)"]` | Flips checkboxes and adds indented notes (`Merged:`, `Clarification:`) in the local copy, keeping every other byte (§4) |
+| `tasks-mark.py --file <tasks.md> --tasks 22,23 [--done] [--note "Merged: PR #n (sha)"]` | Adds indented notes (`Merged:`, `Clarification:`) in the local copy, keeping every other byte; `--done` flips `[ ]` or `[-]` to `[x]` only where the task board is off (§4) |
 | `clarify.py --file <requirements.md> --title … --text …` (or `--line "… {id} …"`) | Adds the next numbered entry to `## Clarifications` after the last one with the same letter, and updates `C1–Cn` range mentions |
 
 The two document scripts edit the local copy under `.specs/<bundle>/`; you still upload it with `update_spec_file` and `expected_version`.
@@ -79,7 +79,12 @@ Whenever an agent pushes after an approval, request the review again at once (`g
 
 ## 4. Mark done on MySpec
 
-For each merged task: `get_spec_file` for the current `content_version`, make sure the local copy is that revision (`read_spec_file` or `download_spec_file`), flip that task's `- [ ]` to `- [x]` and add its note with `scripts/tasks-mark.py --file .specs/<bundle>/tasks.md --tasks <N1>,<N2> --done --note "Merged: PR #<n> (<short sha>)"` (it keeps every other byte and refuses a task id it cannot find exactly once), and `update_spec_file` with `local_file_path` and `expected_version`. On a conflict, take the new token, re-read, re-apply, retry. After the write, the event feed echoes a `spec_file.updated` frame carrying the returned `content_version`; ignore it. Add an indented note under the task with the pull request number: `  - Merged: PR #123 (<short sha>)`. One update per task is fine; batching all merged tasks into one update is better when several merged. A merged group pull request (or a 1.x lane pull request) marks every task it carries in one update, each with its own `Merged:` note.
+A merged group pull request (or a 1.x lane pull request) marks every task it carries, in two writes:
+
+1. **Status, through the task board.** `list_tasks` with the bundle's `tasks.md` as `file_id` for each task's `task_id` (match its `key`: `22`, `2.1`, `T007`; by `title` when the key is empty) and the file's `content_version`; then `set_task_status` with all of those `task_ids`, `status: done` and `expected_versions` (the `myspec-mcp:implement` skill's `references/write-back-protocol.md` § Task status). Each task should come back `updated` (or `unchanged` when someone already marked it). On `file_changed`, list again and retry; `removed` or another failure is reported to the user, never forced.
+2. **The `Merged:` note.** The result's `files[].content_version` is the new token: `read_spec_file` (or `download_spec_file` with `overwrite: true`) to bring the local copy to that revision, add the notes with `scripts/tasks-mark.py --file .specs/<bundle>/tasks.md --tasks <N1>,<N2> --note "Merged: PR #<n> (<short sha>)"` (it keeps every other byte and refuses a task id it cannot find exactly once), and `update_spec_file` with `local_file_path` and that `expected_version`. On a conflict, take the new token, re-read, re-apply, retry.
+
+Where the task board is off (the task tools answer `the task board is turned off`), do both in one write: `tasks-mark.py … --done --note …` on a copy at the current `content_version`, then `update_spec_file`. After each write the event feed echoes a `spec_file.updated` frame carrying the returned `content_version`; ignore it.
 
 ## 4b. Watch the merge land
 

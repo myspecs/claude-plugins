@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Mark tasks done and add indented notes in a local copy of tasks.md, keeping every other byte.
+"""Add indented notes to tasks in a local copy of tasks.md, and mark them done, keeping every other byte.
+
+Status normally changes through the MCP tool set_task_status; use --done only where the task board is
+turned off (the fallback edit).
 
 Usage: tasks-mark.py --file .specs/<bundle>/tasks.md --tasks 22,23,24 [--done] [--note "<text>" ...] [--dry-run]
-  --done     flip each task's `- [ ]` to `- [x]` (a task already `[x]` is left as it is)
+  --done     flip each task's `- [ ]` or `- [-]` (in progress) to `- [x]` (a task already `[x]` is left as it is)
   --note     add `  - <text>` under each task, after its last indented line; repeatable. Use the
              plugin's sub-bullet names: "Merged: PR #123 (abc1234)", "Clarification: ...", "Progress: ..."
              A note already present under the task is not added twice.
   --dry-run  print what would change and write nothing
 
-Task lines it recognises: `- [ ] 22\\. Title` and `- [ ] 22. Title` (MySpec), `- [ ] 2.1 Title` (OpenSpec);
-`22` never matches `22.1`. A task id that matches no line, or more than one, stops the run with nothing written.
+Task lines it recognises, with `[ ]`, `[-]` or `[x]`: `- [ ] 22\\. Title` and `- [ ] 22. Title` (MySpec),
+`- [ ] 2.1 Title` (OpenSpec), `- [ ] T007 Title` (Spec Kit); `22` never matches `22.1`. A task id that matches no line, or more than one, stops the run with nothing written.
 Then upload the file with `update_spec_file` and the `expected_version` of the revision this copy came from.
 Exit codes: 0 ok, 1 not found or ambiguous, 2 usage.
 """
@@ -37,8 +40,8 @@ def main():
         if "\n" in n or "\r" in n or not n.strip():
             p.error("a note is one non-empty line")
     ids = [t.strip() for t in a.tasks.split(",") if t.strip()]
-    if not ids or not all(re.fullmatch(r"\d+(\.\d+)*", t) for t in ids):
-        p.error("--tasks takes task ids such as 22,23 or 2.1")
+    if not ids or not all(re.fullmatch(r"\d+(\.\d+)*|T\d+", t) for t in ids):
+        p.error("--tasks takes task ids such as 22,23, 2.1 or T007")
 
     with open(a.file, newline="") as f:
         original = f.read()
@@ -47,7 +50,7 @@ def main():
 
     plan = []  # (task id, line index)
     for t in ids:
-        pat = re.compile(r"^[ \t]*- \[[ xX]\] " + re.escape(t) + r"(\\?\.)?(?=[ \t])")
+        pat = re.compile(r"^[ \t]*- \[[ xX-]\] " + re.escape(t) + r"(\\?\.)?(?=[ \t])")
         hits = [i for i, ln in enumerate(lines) if pat.match(ln)]
         if len(hits) != 1:
             print(f"tasks-mark: task {t} matches {len(hits)} lines" + (f" ({', '.join(str(h + 1) for h in hits)})" if hits else "")
@@ -60,9 +63,10 @@ def main():
         changes = []
         line = lines[i]
         if a.done:
-            if re.match(r"^[ \t]*- \[ \]", line):
-                lines[i] = line.replace("- [ ]", "- [x]", 1)
-                changes.append("[ ] -> [x]")
+            m = re.match(r"^[ \t]*- \[([ -])\]", line)
+            if m:
+                lines[i] = line.replace(f"- [{m.group(1)}]", "- [x]", 1)
+                changes.append(f"[{m.group(1)}] -> [x]")
             else:
                 changes.append("already [x]")
         base = indent(line)

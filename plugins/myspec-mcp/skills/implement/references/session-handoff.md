@@ -1,13 +1,13 @@
 # Session handoff
 
-Implementation usually spans several Claude Code sessions and several people. Two things carry state: the checkboxes in `tasks.md` on the platform (shared truth) and a local progress note (private context).
+Implementation usually spans several Claude Code sessions and several people. Two things carry state: the task statuses in `tasks.md` on the platform (`[ ]`, `[-]`, `[x]`, shared truth, also shown on the task board with assignees) and a local progress note (private context).
 
 ## Resume order
 
-1. `get_spec_file` and `read_spec_file` on `tasks.md`; the checked boxes say what is done.
+1. `list_tasks` (or `get_spec_file` and `read_spec_file` on `tasks.md` when the task board is off): `[x]` is done, `[-]` is in progress, and its assignee says whose. A `[-]` task of yours is the one to resume.
 2. `.specs/<bundle>/progress.md` if present; it says why and what is half-done.
 3. `git log --oneline -20` and `git status`. Uncommitted changes are normal when the user declined per-task commits; reconcile them against `progress.md` and finish or set them aside deliberately. Never discard them without asking the user.
-4. If checkboxes and code disagree, run the `analyze` skill in convergence mode.
+4. If statuses and code disagree, run the `analyze` skill in convergence mode.
 
 ## Progress note
 

@@ -143,7 +143,7 @@ For each agent, first name it (§3a). With a board, then pick its key, create it
    registry.py … add-agent --agent a<k> --name <name> --path cloud-cli --session-id <id> --url <url> --started-at <now> --worker-key <key> --model <model> --effort <effort> --queue <group> <group> …
    registry.py … assign --agent a<k> --tasks <N1>,<N2> --title "<summary>" --branch factory/<bundle>/tasks-<N1>-<N2>
    ```
-   `add-agent` records the agent's name, title (`Ada (a1)`) and worker id `w:a1`; `assign` prints the assignment id (`a<k>-1`) and drops the group from the queue. Add `session_url` to `board/w:a<k>`. For a stacked assignment also `set --assignment <id> stacked_on=<p>@<parent head sha>`, and for a held one `hold_until="<condition>"`. A start whose id could not be captured is recorded with `--session-id unknown`; ask the user for the session URL, then `registry.py … agent --agent a<k> session_id=<id> url=<url>`.
+   Then mark the first group in progress on the task board as §5 step 5 says. `add-agent` records the agent's name, title (`Ada (a1)`) and worker id `w:a1`; `assign` prints the assignment id (`a<k>-1`) and drops the group from the queue. Add `session_url` to `board/w:a<k>`. For a stacked assignment also `set --assignment <id> stacked_on=<p>@<parent head sha>`, and for a held one `hold_until="<condition>"`. A start whose id could not be captured is recorded with `--session-id unknown`; ask the user for the session URL, then `registry.py … agent --agent a<k> session_id=<id> url=<url>`.
 3. Add a line to the run log `.specs/<bundle>/factory-run.md` (`registry.py … log --run-log <path> "<text>"`).
 4. Arm one `Monitor` per assignment on the tested script, not a hand-written loop:
 
@@ -169,6 +169,7 @@ Whenever an agent becomes free (§0b), at `full` straight away, otherwise after 
 2. With a board, write an `assign` entry in `mail/sfm~w:a<k>` (assignment id, tasks, branch; the text stays short, the full message goes in the doorbell) and update `board/w:a<k>` (`assignment`, `queue`).
 3. Send it: `cd <clone> && claude -p "$(cat <scratchpad>/a<k>-<n>.md)" --cloud <session_id> </dev/null` (a local agent: `SendMessage` to its `agent_name`).
 4. `registry.py … assign --agent a<k> --tasks … --title … --branch …`, a log line, and a new `pr-watch.sh` Monitor with the new `assigned_at` (§4 step 4).
+5. Show it on MySpec's task board: `set_task_status` with the group's `task_ids`, `status: in_progress` and `expected_versions` from `list_tasks`, then `update_tasks` with `add_labels: ["agent:<name>"]`, so collaborators see which agent works on what. The manager is still the only writer of `tasks.md`; agents never change a status. Where the task board is off, skip this step.
 
 Run the `integrate` skill for each pull request as it becomes ready; merge any ready pull request that depends on no unmerged one straight away. A pushed branch is not a finished assignment: agents keep committing after the first push, so wait for the pull request, or for commits to have stopped. The milestone gate (`integrate` §6) runs when the milestone's last task is `[x]`; during it every agent idles, and after the user's answer the same agents get the next milestone's groups (§0b, divided again).
 

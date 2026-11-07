@@ -1,7 +1,7 @@
 {
   "name": "myspec-mcp",
-  "description": "Connects Claude Code to the MySpec platform via @myspec/mcp-server and adds Spec Driven Development skills: set up and sign in, implement tasks from spec bundles with tests from acceptance criteria, analyze spec consistency and code-to-spec convergence, author specs in MySpec formats, and bridge a local repo into brownfield spec sessions",
-  "version": "1.0.5",
+  "description": "Connects Claude Code to the MySpec platform via @myspec/mcp-server and adds Spec Driven Development skills: set up and sign in, implement tasks from spec bundles with tests from acceptance criteria and progress on MySpec's task board, analyze spec consistency and code-to-spec convergence, author specs in MySpec formats or start a MySpec spec session, work with MySpec artifacts such as clickable prototypes, and bridge a local repo into brownfield spec sessions",
+  "version": "1.1.0",
   "author": {
     "name": "MySpec Team",
     "email": "admin@myspec.dev"
