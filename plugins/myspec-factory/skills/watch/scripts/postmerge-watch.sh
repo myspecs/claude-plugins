@@ -3,7 +3,9 @@
 # Prints a line when the runs first appear, when a run fails, and at the end; a run moving from
 # queued to in_progress or finishing green is not printed. Exits when every run is finished.
 # Run it with Bash run_in_background (it can outlast a 30-minute Monitor window): the completion
-# notice is the one wake-up, and `tail -n 3` of its output file gives the result.
+# notice is the one wake-up, and `tail -n 3` of its output file gives the result. Output whose last
+# lines hold none of post-merge-complete, failed: or post-merge-watch-timeout means the watch was
+# stopped before the end (a session restart, TaskStop): the state is unknown; check gh run list.
 #
 # Usage: postmerge-watch.sh <repo-clone-dir> <merge-sha> [base-branch] [interval-seconds]
 #

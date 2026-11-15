@@ -43,6 +43,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+for ((i = 0; i < ${#pass[@]}; i++)); do
+  if [ "${pass[$i]}" = --interval ]; then
+    case "${pass[$((i + 1))]}" in ''|*[!0-9]*) echo "--interval must be whole seconds"; exit 2 ;; esac
+  fi
+done
 [ "${#specs[@]}" -gt 0 ] || { echo "give at least one \"<label>|<title prefix>|<assigned_at>\""; exit 2; }
 case "$tick" in ''|*[!0-9]*) echo "--tick must be whole minutes"; exit 2 ;; esac
 if [ "$tick" -gt 60 ]; then echo "--tick must be 0-60"; exit 2; fi
