@@ -177,7 +177,7 @@ Restart Claude Code after updating. To remove: `/plugin uninstall myspec-factory
 | Skill | Invoke | Purpose |
 |---|---|---|
 | `setup` | `/myspec-factory:setup` | Check MySpec and GitHub access and cloud readiness; propose repository settings so agents load `myspec-mcp`; pick a MySpec project and open its event feed |
-| `watch` | Used by the manager | Open the project's live event feed and react to each event; polls when the feed is not available |
+| `watch` | Used by the manager | Open the project's live event feed while the spec can still change (planning, spec review, a running spec session), and check for spec changes before each merge or assignment while the agents build; one watch for all the agents' pull requests |
 | `plan` | Used by the manager | Build the task board, group related tasks, propose the team size and share the groups out evenly; write `tasks.md` when a brownfield bundle has none |
 | `dispatch` | Used by the manager | Run the team: start the agents (cloud first, local as fallback), send each its next group of tasks, rebalance, replace an agent after a failure |
 | `integrate` | Used by the manager | Verify and merge the agents' pull requests (a gate script checks approval on the latest commit, checks, threads, holds, base drift and migration order), mark tasks done on MySpec, run the milestone gate |
@@ -200,7 +200,7 @@ The manager also uses `myspec-mcp:implement` (how progress is written back) and 
 | Level | Merges | Gives agents their next tasks |
 |---|---|---|
 | `ask-each` | Asks before every merge | Asks each time |
-| `merge-on-gate` (recommended) | Merges on its own once the gate passes | Asks each time |
+| `merge-on-gate` (recommended) | Merges on its own once the gate passes | Sends the next tasks of the plan you approved on its own; asks before any change to that plan |
 | `full` | Merges on its own once the gate passes | On its own, within the same milestone, once what the tasks wait for has merged and deployed |
 
 At every level the manager still asks you about spec questions, changes an agent made beyond the spec, rewrites of spec documents, and starting the next milestone. The merge gate is the same at every level: the reviewer approved the pull request's latest commit, required checks are green, review threads are resolved, the pull request merges cleanly with auto-merge off, the manager's own verification covers every change, and no spec question is open.

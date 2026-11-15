@@ -40,3 +40,18 @@ An assignment message or a steering message (`claude -p … --cloud <session_id>
 
 - Show the rung for each agent in the team table the user confirms (the `plan` skill), with one reason when it is not rung 2.
 - Record it with `registry.py … add-agent … --model <model> --effort <effort>`. The script refuses combinations off the ladder unless `--off-ladder` is given (step 6 above).
+
+## Manager subagents
+
+The manager's own `Agent`-tool subagents (verification, test runs, convergence, drafting) are not team agents and are not on the ladder above. Pass `model` on every call, and `effort: "medium"` with it: one left out inherits the manager's model and effort, and the manager usually runs on the strongest one. `sonnet` never runs above `medium` here either. Never use `subagent_type: "fork"` for them: a fork copies the manager's whole context, which late in a run is hundreds of thousands of tokens.
+
+| Subagent | `model` |
+|---|---|
+| Verify a pull request whose groups are rung 1 or 2 | `sonnet` |
+| Verify a pull request with any rung 3 or 4 group (shared contracts, migrations, auth and permissions, concurrency), or one whose cross-branch contracts must be compared field by field | `opus` |
+| Re-verify fix commits (`<verified-sha>..<head>`) | `sonnet`; `opus` when the fix touches a rung 3 or 4 area |
+| Run the test suite | `sonnet` |
+| Convergence check (`myspec-mcp:analyze`) at a milestone gate | `opus` |
+| Draft a spec reconciliation or follow-up tasks into `draft/` | `opus` |
+
+Every subagent returns a compact report (verdict first, one row per finding, nothing about what passed beyond its row), and its prompt names files, shas and diff ranges for it to read rather than pasting text into the prompt. The user's choice of model wins here too.

@@ -69,13 +69,13 @@ Before an agent's session starts (its brief says its documents already exist):
 2. Create the agent's five documents in one batch (sample-calls.md § Each agent start): `board/<id>` (with its `name` and `agent_title`, its first assignment and its queue), `reports/<id>`, `mail/sfm~<id>`, `mail/<id>~sfm`, `cursors/<id>`. A replacement session's card copies the slot's `merged` list.
 3. Fill the agent brief's `## Factory board` section (the dispatch skill's `references/worker-brief.md`) with the board URL, the worker id, the worker key and the run key; then start the agent.
 4. Right after the start: `registry.py … add-agent … --worker-key <key>`; update `board/<id>` with `session_url`.
-5. Start one `board-tick.sh` Monitor if none is running (the watch skill), and make sure the board watch is on (§3 step 1). Keep the Monitor only while an agent is working; stop it with TaskStop as soon as none is. Keep the watch while an agent is working or a board question waits for the owner, and when both end, leave it on until the stopped Monitor's window would have ended, then stop it at the next wake (`ArtifactComments` `watch` with `on: false`) without re-arming (the output style's polling rule). Start both again when you start an agent, send an assignment, or ring a doorbell.
+5. Arm the team watch with `--tick 10` (the dispatch skill §4 step 4; it replaces a separate `board-tick.sh` Monitor), and make sure the board watch is on (§3 step 1). Keep the tick only while an agent is working; when none is, re-arm the team watch without `--tick`. Keep the watch while an agent is working or a board question waits for the owner, and when both end, leave it on until the stopped Monitor's window would have ended, then stop it at the next wake (`ArtifactComments` `watch` with `on: false`) without re-arming (the output style's polling rule). Start both again when you start an agent, send an assignment, or ring a doorbell.
 
 Each later assignment (the dispatch skill's §5): an `assign` entry in `mail/sfm~<id>` and the card's `assignment`, `tasks`, `title`, `branch`, `pr`, `verified_sha` and `queue` in one batch (sample-calls.md § Next assignment), then the doorbell carrying the full assignment message. A rebalance updates both cards' `queue`.
 
 ## 5. Read the board
 
-At every loop step, on every `board-tick`, `pr-watch.sh` or feed line, and when a comment wakes the session (sample-calls.md § Read):
+At every loop step (before an integrate or assignment step), on every `board-tick` line, on the team watch's expiry when the last read was 10 or more minutes ago, and when a comment wakes the session (sample-calls.md § Read). Not on every pull-request or feed line: those carry their own news, and a board read that finds nothing still costs a turn:
 
 1. `query` `mail` for `to` in `sfm`, `all-workers`; compare each `last_seq` with `cursors/sfm.reads`; read only the new entries. Check each entry's key with `registry.py … whois --from <id> --key <key>`; a mismatch is invalid (protocol.md § Identities): ignore it and report it.
 2. `list` `reports`: phase changes, new `head_sha`, a `final` report.

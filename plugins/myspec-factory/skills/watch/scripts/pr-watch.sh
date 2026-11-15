@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Watch one factory pull request: the agent's new branch for one assignment, the PR, its checks
-# and review state. Prints one line when the state changes, nothing otherwise.
-# Exits when the PR is merged or closed.
+# and review state. Prints one line when the state changes in a way the manager acts on, nothing
+# otherwise: the pending-check count moving between non-zero values (pending=14 -> 12) and a new commit on a branch
+# before the PR exists are not changes; pending reaching 0, a new failing check, a new head, a review
+# change, draft/ready and merge/close are. Exits when the PR is merged or closed.
 #
 # Usage: pr-watch.sh <repo-clone-dir> "<title prefix>" [--since <ISO-8601 time>] [--interval <seconds>]
-#                    [--reviewer <login>] [--rerequest]
+#                    [--reviewer <login>] [--rerequest] [--state <file>] [--parent <pid>]
 #   <title prefix>  how the PR title starts, e.g. "task 38", "task 30, 31".
 #                   Letters, digits, spaces and commas only. A PR matches when its title
 #                   starts with the prefix and the next character is not a digit, so
@@ -23,6 +25,12 @@
 #   --rerequest     needs --reviewer. When the reviewer has reviewed an older head of an open,
 #                   non-draft PR and has no pending review request, run
 #                   `gh pr edit <n> --add-reviewer <reviewer>` once for the current head.
+#   --state         keep the last printed state in <file>, so a restarted watch (a Monitor re-armed on
+#                   expiry, or team-watch.sh restarted for a new assignment) does not print the
+#                   state the manager already saw. Delete the file (or team-watch.sh --fresh) to get
+#                   a baseline line again, e.g. after a session restart.
+#   --parent        exit when process <pid> is gone (team-watch.sh passes its own pid, so no watch
+#                   outlives a stopped Monitor).
 #
 # Lines:
 #   <time> branches=[<branch@sha8 ...>] no PR yet
@@ -43,12 +51,16 @@ since=""
 interval=90
 reviewer=""
 rerequest=0
+state=""
+parent=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --since) since=${2:?--since needs a time}; shift 2 ;;
     --interval) interval=${2:?--interval needs seconds}; shift 2 ;;
     --reviewer) reviewer=${2:?--reviewer needs a login}; shift 2 ;;
     --rerequest) rerequest=1; shift ;;
+    --state) state=${2:?--state needs a file}; shift 2 ;;
+    --parent) parent=${2:?--parent needs a pid}; shift 2 ;;
     *) echo "unknown argument: $1"; exit 2 ;;
   esac
 done
@@ -212,12 +224,28 @@ rerequest_review() {
   case "$msg" in re-requested*) rr_msg="" ;; *) rr_msg=$msg ;; esac
 }
 
+# The change key: the line without branch tip shas (head= keeps the PR's head) and with the
+# pending count reduced to 0 or >0, so a shrinking count of running checks wakes nobody.
+key_of() {
+  printf '%s' "$1" | sed -E 's/@[0-9a-f]{8}//g; s/ pending=[1-9][0-9]*$/ pending=>0/'
+}
+
 prev=""
+if [ -n "$state" ] && [ -f "$state" ]; then
+  prev=$(cat "$state" 2>/dev/null) || prev=""
+fi
 while true; do
+  if [ -n "$parent" ] && ! kill -0 "$parent" 2>/dev/null; then exit 0; fi
   snap
-  if [ "$cur" != "$prev" ]; then
+  key=$(key_of "$cur")
+  if [ "$key" != "$prev" ]; then
     echo "$(date -u +%H:%M:%SZ) $cur"
-    prev="$cur"
+    prev="$key"
+    # An unknown state is never saved: a restart after it must print the real state.
+    case "$cur" in
+      github-unreachable*) ;;
+      *) [ -n "$state" ] && printf '%s' "$key" > "$state" 2>/dev/null ;;
+    esac
   fi
   case "$cur" in
     *" state=MERGED "*|*" state=CLOSED "*)
@@ -226,5 +254,13 @@ while true; do
     github-unreachable*) ;;
     *) rerequest_review ;;
   esac
-  sleep "$interval"
+  if [ -n "$parent" ]; then
+    waited=0
+    while [ "$waited" -lt "$interval" ]; do
+      kill -0 "$parent" 2>/dev/null || exit 0
+      sleep 5; waited=$((waited + 5))
+    done
+  else
+    sleep "$interval"
+  fi
 done
