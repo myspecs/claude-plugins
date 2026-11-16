@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Watch one factory pull request: the agent's new branch for one assignment, the PR, its checks
-# and review state. Prints one line when the state changes, nothing otherwise.
-# Exits when the PR is merged or closed.
+# and review state. Prints one line when the state changes in a way the manager acts on, nothing
+# otherwise: the pending-check count moving between non-zero values (pending=14 -> 12) and a new commit on a branch
+# before the PR exists are not changes; pending reaching 0, a new failing check, a new head, a review
+# change, draft/ready and merge/close are. Exits when the PR is merged or closed.
 #
 # Usage: pr-watch.sh <repo-clone-dir> "<title prefix>" [--since <ISO-8601 time>] [--interval <seconds>]
-#                    [--reviewer <login>] [--rerequest]
+#                    [--reviewer <login>] [--rerequest] [--state <file>] [--parent <pid>]
 #   <title prefix>  how the PR title starts, e.g. "task 38", "task 30, 31".
 #                   Letters, digits, spaces and commas only. A PR matches when its title
 #                   starts with the prefix and the next character is not a digit, so
 #                   "task 3" never matches "task 30".
+#   --interval      seconds between polls (whole number, at least 10; default 90).
 #   --since         ignore PRs created before this time. Pass the assignment's `assigned_at`
 #                   from the registry so an older PR with the same title (another bundle,
 #                   or the PR of a replaced agent session) is never picked up. Also selects the
@@ -23,6 +26,12 @@
 #   --rerequest     needs --reviewer. When the reviewer has reviewed an older head of an open,
 #                   non-draft PR and has no pending review request, run
 #                   `gh pr edit <n> --add-reviewer <reviewer>` once for the current head.
+#   --state         keep the last printed state in <file>, so a restarted watch (a Monitor re-armed on
+#                   expiry, or team-watch.sh restarted for a new assignment) does not print the
+#                   state the manager already saw. Delete the file (or team-watch.sh --fresh) to get
+#                   a baseline line again, e.g. after a session restart.
+#   --parent        exit when process <pid> is gone (team-watch.sh passes its own pid, so no watch
+#                   outlives a stopped Monitor).
 #
 # Lines:
 #   <time> branches=[<branch@sha8 ...>] no PR yet
@@ -30,8 +39,10 @@
 #            approved_head: yes = the latest APPROVED review is on the current head; no = that
 #            approval is on an older commit (the head changed after it); none = no approval.
 #   <time> re-requested review from <reviewer> on <head8>   -- only with --rerequest
-#   <time> github-unreachable (<what failed>)   -- a gh/git call failed; the state is UNKNOWN, not empty
-#   <time> done: PR #<n> state=<MERGED|CLOSED>  -- terminal; exits 0
+#   <time> github-unreachable (<what failed>)   -- two polls in a row failed; the state is UNKNOWN, not empty.
+#                                                 Printed once per outage; the next line is a real change only
+#   <time> done: PR #<n> state=<MERGED|CLOSED>  -- terminal; exits 0. Not repeated by a --state restart:
+#                                                 a terminal state the earlier run printed exits silently
 # Works with macOS bash 3.2.
 set -uo pipefail
 export GIT_TERMINAL_PROMPT=0
@@ -43,12 +54,16 @@ since=""
 interval=90
 reviewer=""
 rerequest=0
+state=""
+parent=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --since) since=${2:?--since needs a time}; shift 2 ;;
     --interval) interval=${2:?--interval needs seconds}; shift 2 ;;
     --reviewer) reviewer=${2:?--reviewer needs a login}; shift 2 ;;
     --rerequest) rerequest=1; shift ;;
+    --state) state=${2:?--state needs a file}; shift 2 ;;
+    --parent) parent=${2:?--parent needs a pid}; shift 2 ;;
     *) echo "unknown argument: $1"; exit 2 ;;
   esac
 done
@@ -59,6 +74,10 @@ esac
 case "$reviewer" in
   *[!A-Za-z0-9_\[\]-]*) echo "reviewer login may contain only letters, digits, '-', '_' and '[]'"; exit 2 ;;
 esac
+# A malformed interval would make the poll loop spin and burn the GitHub rate limit.
+case "$interval" in ''|*[!0-9]*) echo "--interval must be whole seconds"; exit 2 ;; esac
+min_interval=${PR_WATCH_MIN_INTERVAL:-10}   # lowered only by the tests
+[ "$interval" -ge "$min_interval" ] || interval=$min_interval
 if [ "$rerequest" = 1 ] && [ -z "$reviewer" ]; then
   echo "--rerequest needs --reviewer"; exit 2
 fi
@@ -212,19 +231,56 @@ rerequest_review() {
   case "$msg" in re-requested*) rr_msg="" ;; *) rr_msg=$msg ;; esac
 }
 
+# The change key: the line without branch tip shas (head= keeps the PR's head) and with the
+# pending count reduced to 0 or >0, so a shrinking count of running checks wakes nobody.
+key_of() {
+  printf '%s' "$1" | sed -E 's/@[0-9a-f]{8}//g; s/ pending=[1-9][0-9]*$/ pending=>0/'
+}
+
+# prev is the key of the last GOOD state printed (or saved by an earlier run with --state).
+# A failed poll never replaces it, so recovering from a GitHub blip re-prints nothing unless
+# the state really changed. Failures print once, at the second in a row.
 prev=""
+if [ -n "$state" ] && [ -f "$state" ]; then
+  prev=$(cat "$state" 2>/dev/null) || prev=""
+fi
+fails=0
+printed_terminal=0
 while true; do
+  if [ -n "$parent" ] && ! kill -0 "$parent" 2>/dev/null; then exit 0; fi
   snap
-  if [ "$cur" != "$prev" ]; then
-    echo "$(date -u +%H:%M:%SZ) $cur"
-    prev="$cur"
-  fi
   case "$cur" in
-    *" state=MERGED "*|*" state=CLOSED "*)
-      echo "$(date -u +%H:%M:%SZ) done: $(printf '%s' "$cur" | grep -oE 'PR #[0-9]+ state=(MERGED|CLOSED)')"
-      exit 0 ;;
-    github-unreachable*) ;;
-    *) rerequest_review ;;
+    github-unreachable*)
+      fails=$((fails + 1))
+      [ "$fails" = 2 ] && echo "$(date -u +%H:%M:%SZ) $cur" ;;
+    *)
+      fails=0
+      key=$(key_of "$cur")
+      if [ "$key" != "$prev" ]; then
+        echo "$(date -u +%H:%M:%SZ) $cur"
+        prev="$key"
+        printed_terminal=1
+        [ -n "$state" ] && printf '%s' "$key" > "$state" 2>/dev/null
+      else
+        printed_terminal=0
+      fi
+      case "$cur" in
+        *" state=MERGED "*|*" state=CLOSED "*)
+          # A terminal state already printed by an earlier run (read from --state) ends silently.
+          [ "$printed_terminal" = 1 ] && \
+            echo "$(date -u +%H:%M:%SZ) done: $(printf '%s' "$cur" | grep -oE 'PR #[0-9]+ state=(MERGED|CLOSED)')"
+          exit 0 ;;
+        *) rerequest_review ;;
+      esac ;;
   esac
-  sleep "$interval"
+  if [ -n "$parent" ]; then
+    waited=0
+    while [ "$waited" -lt "$interval" ]; do
+      kill -0 "$parent" 2>/dev/null || exit 0
+      step=$((interval - waited)); [ "$step" -gt 5 ] && step=5
+      sleep "$step"; waited=$((waited + step))
+    done
+  else
+    sleep "$interval"
+  fi
 done

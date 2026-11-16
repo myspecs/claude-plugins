@@ -119,9 +119,9 @@ Start the manager with `claude --remote-control "factory <bundle>"` or run `/rem
 | `claude --bg` | `claude agents`, `claude logs <id>` |
 | All | `gh pr list --state open` filtered by `factory/` branches or `task N1, N2, …:` / `task N:` titles |
 
-Use the tested scripts in the `watch` skill's `scripts/` directory (`pr-watch.sh` per pull request, `postmerge-watch.sh` per merge) rather than writing a `Monitor` command. The rules below are what those scripts already implement; they matter only if a script has to be extended:
+Use the tested scripts in the `watch` skill's `scripts/` directory (`team-watch.sh` for all open assignments in one Monitor, which runs `pr-watch.sh` per pull request; `postmerge-watch.sh` per merge, as a background Bash command) rather than writing a `Monitor` command. The rules below are what those scripts already implement; they matter only if a script has to be extended:
 
-- Emit a baseline line on the first poll, then one line per change. A failed GitHub call prints `github-unreachable`, never an empty state. A filter that only matches the happy path is indistinguishable from a dead agent; cover "no branch yet", the branch, the pull request, failing checks, and the terminal states (`MERGED`, `CLOSED`).
+- Emit a baseline line on the first poll, then one line per change the manager acts on; a running-check count or a branch tip that moves is not one, because every line costs the manager a turn of its whole context. A failed GitHub call prints `github-unreachable`, never an empty state. A filter that only matches the happy path is indistinguishable from a dead agent; cover "no branch yet", the branch, the pull request, failing checks, and the terminal states (`MERGED`, `CLOSED`).
 - Never `echo "$json" | jq`: in `zsh`, `echo` eats backslash escapes and jq dies with `Invalid string: control characters ... must be escaped`, which produces a silent watch. Use `printf '%s'`, or let `gh` do it with `--jq`.
 - Match cloud agents by `claude/*` branches and `task N1, N2, …:` or `task N:` titles, not by the branch name the brief asked for.
 - Count only `FAILURE` and `TIMED_OUT` as failures; a `CANCELLED` check is usually a run superseded by a newer push.

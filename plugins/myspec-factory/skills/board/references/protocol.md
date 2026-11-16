@@ -21,7 +21,7 @@ Facts and formats shared by the manager and every team agent (a worker, in the b
 
 | Direction | Carrier | Wake-up |
 |---|---|---|
-| Agent → manager: progress, questions, report copy | The agent's mailbox `mail/w:a<k>~sfm` and `reports/w:a<k>` | None. The manager reads the board at every loop step, on every `pr-watch.sh` or feed line, and on every `board-tick.sh` line |
+| Agent → manager: progress, questions, report copy | The agent's mailbox `mail/w:a<k>~sfm` and `reports/w:a<k>` | None. The manager reads the board at every loop step, on every `board-tick` line of the team watch (every 10 minutes while an agent works), and on its expiry |
 | Manager → agent: assignments, answers, decisions, relays, steering | `mail/sfm~w:a<k>` (or `mail/sfm~all-workers`) | Doorbell with the same full text: `claude -p "$(cat <file>)" --cloud <session_id>` for a cloud worker, `SendMessage` to `agent_name` for a local one (`SKILL.md` §5) |
 | Owner → manager | A comment on the board (the shell's comment mode, or a card's **Comment** button) | **Send to Claude** wakes the manager at once while its board watch is on (an agent is working, a question waits for the owner, or less than one tick window has passed since both ended); otherwise, and for a plain comment, it is seen at the next board read |
 | Manager → owner | A signed reply in the thread, and `AskUserQuestion` in the terminal for decisions | — |

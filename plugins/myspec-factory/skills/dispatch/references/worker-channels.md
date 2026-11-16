@@ -42,10 +42,10 @@ With a board, put the message on the board and send a doorbell that carries the 
 
 | Mechanism | Use |
 |---|---|
-| `Monitor` on `gh pr view` / `git ls-remote` | Each assignment's branch, pull request, checks, review decision and merge state. One watch per assignment, re-armed on expiry |
-| `Monitor` on `gh run list` | Post-merge deploy runs on the default branch |
+| `Monitor` on `team-watch.sh` | Every open assignment's branch, pull request, checks, review decision and merge state, in one watch for the team, re-armed on expiry and when an assignment is added |
+| Background Bash on `postmerge-watch.sh` | Post-merge deploy runs on the default branch; one wake-up when they finish |
 | MySpec event feed (`watch` skill) | Spec changes and spec-session completion. Agent reports arrive on pull requests and the factory board, not on the feed |
-| `Monitor` on `board-tick.sh` | A line every 10 minutes while an agent is working: the cue to read the factory board, which wakes nobody by itself. Stopped as soon as no agent is working |
+| `team-watch.sh --tick 10` | A `board-tick` line every 10 minutes while an agent is working: the cue to read the factory board, which wakes nobody by itself. Dropped (team watch re-armed without `--tick`) as soon as no agent is working |
 | Board comment watch | Set up at every run start and after a restart (`board` skill §3): the owner's **Send to Claude** on a board comment wakes the manager. Plain comments, resolves and agent writes do not |
 | Task notifications | The manager's own subagents and background Bash commands |
 | `ListAgents` | Which cloud sessions exist and whether each is `running` or `idle` right now (listing only; message cloud agents with `claude -p`) |

@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # Watch the default-branch workflow runs triggered by one merge commit.
-# Prints one line when the runs change, and exits when every run is finished.
+# Prints a line when the runs first appear, when a run fails, and at the end; a run moving from
+# queued to in_progress or finishing green is not printed. Exits when every run is finished.
+# Run it with Bash run_in_background (it can outlast a 30-minute Monitor window): the completion
+# notice is the one wake-up, and `tail -n 3` of its output file gives the result. Output whose last
+# lines hold none of post-merge-complete, failed: or post-merge-watch-timeout means the watch was
+# stopped before the end (a session restart, TaskStop): the state is unknown; check gh run list.
 #
 # Usage: postmerge-watch.sh <repo-clone-dir> <merge-sha> [base-branch] [interval-seconds]
 #
 # Lines:
-#   <time> <workflow>=<queued|in_progress|success|failure|...> ...
+#   <time> <workflow>=<queued|in_progress|success|failure|...> ...   -- runs first listed, or a new failure
 #   <time> github-unreachable (gh run list)   -- the state is UNKNOWN, not empty; keeps polling
 #   <time> no runs yet for <sha>               -- GitHub listed no run for this commit (yet)
 #   <time> post-merge-complete: <all runs>     -- the same finished set was seen on two polls in a row;
@@ -53,7 +58,19 @@ list_runs() {
   fi
 }
 
+# The print key: unknown, none, or the set of failed runs while any still runs; the full line
+# once all are finished (so the two-poll stability check still sees late runs).
+key_of() {
+  case "$1" in
+    github-unreachable*|"no runs yet"*) printf '%s' "$1"; return ;;
+    *=queued*|*=in_progress*|*=requested*|*=waiting*|*=pending*)
+      printf 'running failed=%s' "$(printf '%s\n' "$runs" | tr ';' '\n' | grep -E '=(failure|cancelled|timed_out|startup_failure|action_required)$' | tr '\n' ' ')" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 prev=""
+prevkey=""
 stable=0
 for _ in $(seq 1 60); do
   if ! runs=$(list_runs 2>/dev/null); then
@@ -63,8 +80,15 @@ for _ in $(seq 1 60); do
   else
     cur=$(printf '%s' "$runs" | sed 's/;/  /g')
   fi
+  key=$(key_of "$cur")
+  if [ "$key" != "$prevkey" ]; then
+    case "$key" in
+      # All finished: printed only by post-merge-complete below, not as a separate line.
+      running*|github-unreachable*|"no runs yet"*) echo "$(date -u +%H:%M:%SZ) $cur" ;;
+    esac
+    prevkey="$key"
+  fi
   if [ "$cur" != "$prev" ]; then
-    echo "$(date -u +%H:%M:%SZ) $cur"
     prev="$cur"
     stable=0
   else
